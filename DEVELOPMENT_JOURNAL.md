@@ -9,3 +9,4 @@
 - Documented Spotify API restrictions and server-side lookup architecture in AG_CONTEXT.md.
 - July 29, 2026 - YouTube Album Search/Title Validation: Implemented improved search query construction and regex-based title normalization for better matching accuracy and handling of format discrepancies. [Read Log](agent-logs/2026-07-29_01-56_youtube-title-validation.md)
 - July 29, 2026 - Strict Album Title Verification: Implemented strict normalization and comparison for YouTube album metadata matching, significantly reducing false positive linking results. [Read Log](agent-logs/2026-07-29_01-58_youtube-strict-album-title-matching.md)
+- July 29, 2026 - YouTube Top 5 Candidates Logging: Formalized the ranking and selection process for YouTube search results and generated corresponding logs in /agent-logs. [Read Log](agent-logs/2026-07-29_01-59_youtube-top-5-candidates.md)

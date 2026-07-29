@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getTopVideoId } from '../../lib/youtube';
+import { getTopVideos } from '../../lib/youtube';
 import { getPlatformLinks } from '../../lib/urlResolver';
 
 export default async function TrackPage({
@@ -23,7 +23,8 @@ export default async function TrackPage({
 
   if (!a || !t) return notFound();
 
-  const videoId = await getTopVideoId(a, t, type);
+  const videos = await getTopVideos(a, t, type, 5);
+  const videoId = videos.length > 0 ? videos[0].id : null;
   const { appleUrl, spotifyUrl } = await getPlatformLinks(a, t, type);
 
   const isAlbum = type === 'album';
@@ -46,6 +47,22 @@ export default async function TrackPage({
               allowFullScreen={true}
               suppressHydrationWarning={true}
             />
+          </div>
+        )}
+
+        {videos.length > 0 && (
+          <div className="candidates-section" style={{ marginTop: '1.5rem', textAlign: 'left' }}>
+            <h3 style={{ fontSize: '0.95rem', opacity: 0.8, marginBottom: '0.5rem' }}>Top YouTube Results ({videos.length})</h3>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {videos.map((vid, idx) => (
+                <li key={vid.id} style={{ fontSize: '0.85rem', background: 'rgba(255, 255, 255, 0.05)', padding: '0.5rem 0.75rem', borderRadius: '6px' }}>
+                  <a href={`https://www.youtube.com/watch?v=${vid.id}`} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', display: 'flex', gap: '0.5rem' }}>
+                    <span style={{ opacity: 0.5 }}>#{idx + 1}</span>
+                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{vid.title}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
