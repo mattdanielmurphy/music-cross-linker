@@ -12,17 +12,27 @@ export default async function TrackPage({ params, searchParams }: { params: Prom
   const appleSearch = `https://music.apple.com/search?term=${encodeURIComponent(a + ' ' + t)}`;
   
   return (
-    <div className="track-container">
+    <main className="container glass" style={{ marginTop: '2rem' }}>
       <h1>{t} by {a}</h1>
       {videoId && (
-        <div className="player-wrapper">
-          <iframe src={`https://www.youtube.com/embed/${videoId}?autoplay=0`} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+        <div className="hero-container">
+          <div className="glass-card">
+            <div className="aspect-video w-full overflow-hidden rounded-xl shadow-2xl">
+              <iframe 
+                src={`https://www.youtube.com/embed/${videoId}`} 
+                title="YouTube video player"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                allowFullScreen
+                className="w-full h-full"
+              />
+            </div>
+          </div>
         </div>
       )}
-      <div className="link-buttons">
-        <a href={spotifySearch} className="btn-spotify">Listen on Spotify</a>
-        <a href={appleSearch} className="btn-apple">Listen on Apple Music</a>
+      <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+        <a href={spotifySearch} className="btn-platform">Listen on Spotify</a>
+        <a href={appleSearch} className="btn-platform">Listen on Apple Music</a>
       </div>
-    </div>
+    </main>
   );
 }

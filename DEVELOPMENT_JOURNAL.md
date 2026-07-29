@@ -1,1 +1,4 @@
 - **Implemented Vercel Music Cross-Linker:** Set up dynamic routing, Spotify/Apple Music metadata resolution, and YouTube integration. Configured dark-mode premium UI with glassmorphism without Tailwind. Updated dev port to 3011.
+
+- **July 28, 2026 - Pivot from Authenticated APIs to Scraping/Public APIs**: Encountered Spotify Developer Premium requirement block. Transitioned to scraping Spotify page `<title>` and querying the free, unauthenticated iTunes public Search API for Apple Music. Extracted metadata is now used to generate generic cross-platform search links, keeping the app 100% free and removing all API key requirements. [Read Log](agent-logs/2026-07-28_18-14_api-bypass-and-scraping-fix.md)
+- **Design Refresh:** Applied glassmorphic design and hydration fixes. [View Log](agent-logs/2026-07-28_18-35_design-refresh.md)
