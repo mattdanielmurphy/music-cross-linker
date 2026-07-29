@@ -31,8 +31,10 @@ export default async function TrackPage({
           <div className="player-wrapper">
             <iframe
               src={`https://www.youtube.com/embed/${videoId}?autoplay=0`}
+              title={`${t} by ${a}`}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
+              allowFullScreen={true}
+              suppressHydrationWarning={true}
             />
           </div>
         )}
