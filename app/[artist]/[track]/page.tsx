@@ -23,7 +23,7 @@ export default async function TrackPage({
 
   if (!a || !t) return notFound();
 
-  const videoId = await getTopVideoId(a, t);
+  const videoId = await getTopVideoId(a, t, type);
   const { appleUrl, spotifyUrl } = await getPlatformLinks(a, t, type);
 
   const isAlbum = type === 'album';
