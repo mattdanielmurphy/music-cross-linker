@@ -4,3 +4,5 @@
 - **Design Refresh:** Applied glassmorphic design and hydration fixes. [View Log](agent-logs/2026-07-28_18-35_design-refresh.md)
 - **Hydration & UI Fix:** Resolved hydration mismatch, applied premium dark glassmorphism theme, and updated landing page layout. [Read Log](agent-logs/2026-07-28_18-35_hydration-ui-fix.md)
 - **UI Implementation:** Refactored track page and global styles with glassmorphism and modern UI components. [2026-07-28_18-38_ui-implementation.md](file:///Users/matt/.gemini/antigravity/brain/686f98a3-fd34-4721-bf93-8c50f23270d5/2026-07-28_18-38_ui-implementation.md)
+
+- **July 28, 2026 - Link Resolution & Album Typing Fix**: Resolved exact item typing (song vs. album), preserved incoming source URLs directly on platform buttons, and integrated direct iTunes search lookups for Apple Music track/album deep links. [Read Log](agent-logs/2026-07-28_19-04_link-resolution-and-album-typing.md)
