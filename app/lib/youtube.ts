@@ -11,34 +11,55 @@ export async function getTopVideoId(artist: string, title: string, type: 'track'
   });
   const html = await res.text();
 
-  // Try to parse videoRenderer blocks to inspect titles
+  const titleLower = title.toLowerCase().trim();
+  const artistLower = artist.toLowerCase().trim();
+
+  // Parse videoRenderer items from ytInitialData
+  const items: Array<{ id: string; videoTitle: string }> = [];
   const videoMatches = Array.from(html.matchAll(/"videoRenderer":\s*({[\s\S]*?})(?=,\s*"videoRenderer"|\]\}\}\}\})/g));
   
   for (const match of videoMatches) {
-    try {
-      const block = match[1];
-      const videoIdMatch = block.match(/"videoId"\s*:\s*"(.*?)"/);
-      const titleMatch = block.match(/"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"(.*?)"/);
-      
-      if (videoIdMatch && videoIdMatch[1]) {
-        const videoId = videoIdMatch[1];
-        const videoTitle = titleMatch ? titleMatch[1].toLowerCase() : '';
-        
-        if (isAlbum) {
-          // Exclude single track indicators if possible or prefer full album matches
-          if (videoTitle.includes('full album') || videoTitle.includes('album') || !videoTitle.includes('official video')) {
-            return videoId;
-          }
-        } else {
-          return videoId;
-        }
-      }
-    } catch (e) {
-      // ignore item parse errors
+    const block = match[1];
+    const videoIdMatch = block.match(/"videoId"\s*:\s*"(.*?)"/);
+    const titleMatch = block.match(/"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"(.*?)"/);
+    if (videoIdMatch && videoIdMatch[1]) {
+      items.push({
+        id: videoIdMatch[1],
+        videoTitle: titleMatch ? titleMatch[1].toLowerCase() : ''
+      });
     }
   }
 
-  // Fallback direct match if structured parse yields nothing
-  const match = html.match(/"videoId":"(.*?)"/);
-  return match ? match[1] : null;
+  if (isAlbum) {
+    // 1. Look for video explicitly matching album title AND containing "full album" or "album"
+    for (const item of items) {
+      const containsAlbumTitle = item.videoTitle.includes(titleLower);
+      const containsAlbumKeyword = item.videoTitle.includes('full album') || item.videoTitle.includes('album');
+      if (containsAlbumTitle && containsAlbumKeyword) {
+        return item.id;
+      }
+    }
+
+    // 2. Look for any result containing the target album title while excluding single-track descriptors
+    for (const item of items) {
+      const containsAlbumTitle = item.videoTitle.includes(titleLower);
+      const isSingleTrack = item.videoTitle.includes('official audio') ||
+                            item.videoTitle.includes('official video') ||
+                            item.videoTitle.includes('music video') ||
+                            item.videoTitle.includes('lyric video');
+      if (containsAlbumTitle && !isSingleTrack) {
+        return item.id;
+      }
+    }
+  }
+
+  // Fallback for track or if no strict album filter matched:
+  // Match item containing the title
+  for (const item of items) {
+    if (item.videoTitle.includes(titleLower)) {
+      return item.id;
+    }
+  }
+
+  return items.length > 0 ? items[0].id : null;
 }
