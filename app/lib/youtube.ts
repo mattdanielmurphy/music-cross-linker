@@ -14,6 +14,7 @@ export async function getTopVideos(
     ? `${artist} ${title} full album`
     : `${artist} ${title} official audio`;
   const query = encodeURIComponent(queryText);
+  console.log('[YOUTUBE SEARCH QUERY]', { artist, title, type, queryText });
   const res = await fetch(`https://www.youtube.com/results?search_query=${query}`, {
     headers: {
       'User-Agent':
@@ -46,6 +47,7 @@ export async function getTopVideos(
     }
   }
 
+  console.log('[YOUTUBE RAW CANDIDATES]', candidates);
   return candidates.slice(0, limit);
 }
 

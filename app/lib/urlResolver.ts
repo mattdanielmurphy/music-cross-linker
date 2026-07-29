@@ -4,6 +4,7 @@ export async function getPlatformLinks(
   type: 'track' | 'album',
   src?: string
 ) {
+  console.log('[PLATFORM RESOLVER INPUT]', { artist, title, type, src });
   let appleUrl = src && src.includes('music.apple.com') ? src : '';
   let spotifyUrl = src && src.includes('spotify.com') ? src : '';
 
@@ -22,6 +23,7 @@ export async function getPlatformLinks(
           data.results[0].collectionViewUrl ||
           '';
       }
+      console.log('[PLATFORM RESOLVER APPLE]', { appleUrl });
     } catch (e) {
       console.error('Failed to resolve Apple Music link:', e);
     }
@@ -52,6 +54,7 @@ export async function getPlatformLinks(
       if (match && match[1]) {
         spotifyUrl = `https://open.spotify.com/${searchType}/${match[1]}`;
       }
+      console.log('[PLATFORM RESOLVER SPOTIFY]', { spotifyUrl });
     } catch (e) {
       console.error('Failed to resolve direct Spotify link via search lookup:', e);
     }
