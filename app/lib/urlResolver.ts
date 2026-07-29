@@ -34,6 +34,30 @@ export async function getPlatformLinks(
   }
 
   if (!spotifyUrl) {
+    try {
+      const searchType = type === 'album' ? 'album' : 'track';
+      const query = `site:open.spotify.com/${searchType} ${artist} ${title}`;
+      const res = await fetch(
+        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        }
+      );
+      const html = await res.text();
+      const regex = new RegExp(`open\\.spotify\\.com\\/${searchType}\\/([a-zA-Z0-9]+)`);
+      const match = html.match(regex);
+      if (match && match[1]) {
+        spotifyUrl = `https://open.spotify.com/${searchType}/${match[1]}`;
+      }
+    } catch (e) {
+      console.error('Failed to resolve direct Spotify link via search lookup:', e);
+    }
+  }
+
+  if (!spotifyUrl) {
     spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(
       artist + ' ' + title
     )}`;
@@ -41,3 +65,4 @@ export async function getPlatformLinks(
 
   return { appleUrl, spotifyUrl };
 }
+
