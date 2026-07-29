@@ -7,3 +7,4 @@
 
 - **July 28, 2026 - Link Resolution & Album Typing Fix**: Resolved exact item typing (song vs. album), preserved incoming source URLs directly on platform buttons, and integrated direct iTunes search lookups for Apple Music track/album deep links. [Read Log](agent-logs/2026-07-28_19-04_link-resolution-and-album-typing.md)- Implemented free server-side search lookup for direct Spotify track and album link resolution without needing Spotify Web API keys or Premium accounts.
 - Documented Spotify API restrictions and server-side lookup architecture in AG_CONTEXT.md.
+- July 29, 2026 - Cleaned up URL query parameters: Removed tracking/session-specific query strings from input URLs to ensure consistent entity identification across all music platforms. [Read Log](agent-logs/2026-07-29_01-52_remove-url-query-params.md)
