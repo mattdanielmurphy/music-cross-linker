@@ -7,14 +7,24 @@ export default async function TrackPage({
   searchParams,
 }: {
   params: Promise<{ artist: string; track: string }>;
-  searchParams: Promise<{ a?: string; t?: string; type?: 'track' | 'album'; src?: string }>;
+  searchParams: Promise<{ type?: 'track' | 'album' }>;
 }) {
   const { artist, track } = await params;
-  const { a, t, type = 'track', src } = await searchParams;
+  const { type = 'track' } = await searchParams;
+
+  const formatSlug = (slug: string) =>
+    decodeURIComponent(slug)
+      .split('-')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
+  const a = formatSlug(artist);
+  const t = formatSlug(track);
+
   if (!a || !t) return notFound();
 
   const videoId = await getTopVideoId(a, t);
-  const { appleUrl, spotifyUrl } = await getPlatformLinks(a, t, type, src);
+  const { appleUrl, spotifyUrl } = await getPlatformLinks(a, t, type);
 
   const isAlbum = type === 'album';
 

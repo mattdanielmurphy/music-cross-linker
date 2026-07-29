@@ -100,9 +100,7 @@ export default async function CatchAllPage({
 
   if (artist && title) {
     redirect(
-      `/${slugify(artist)}/${slugify(title)}?a=${encodeURIComponent(
-        artist
-      )}&t=${encodeURIComponent(title)}&type=${type}&src=${encodeURIComponent(url)}`
+      `/${slugify(artist)}/${slugify(title)}?type=${type}`
     );
   }
   return <div>Could not resolve track. URL: {url}</div>;
