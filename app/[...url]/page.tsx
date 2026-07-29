@@ -50,15 +50,29 @@ export default async function CatchAllPage({
           artist = data.results[0].artistName;
           title = data.results[0].trackName || data.results[0].collectionName;
         }
-      } else if (albumIdMatch) {
-        type = 'album';
+      }
+
+      if (!artist && albumIdMatch) {
+        type = trackIdMatch ? 'track' : 'album';
+        // Try looking up the album with entity=song to find the track if the direct track lookup failed
         const res = await fetch(
-          `https://itunes.apple.com/lookup?id=${albumIdMatch[1]}&country=${country}`
+          `https://itunes.apple.com/lookup?id=${albumIdMatch[1]}&country=${country}&entity=song`
         );
         const data = await res.json();
         if (data.results && data.results.length > 0) {
           artist = data.results[0].artistName;
-          title = data.results[0].collectionName;
+          
+          // If we had a specific trackIdMatch, try to find it within the album results
+          if (trackIdMatch) {
+            const trackResult = data.results.find((r: any) => r.trackId?.toString() === trackIdMatch[1]);
+            if (trackResult) {
+              title = trackResult.trackName;
+            } else {
+              title = data.results[0].collectionName;
+            }
+          } else {
+            title = data.results[0].collectionName;
+          }
         }
       }
     } else if (url.includes('open.spotify.com')) {
