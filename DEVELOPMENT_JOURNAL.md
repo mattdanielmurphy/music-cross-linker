@@ -1,0 +1,1 @@
+- **Implemented Vercel Music Cross-Linker:** Set up dynamic routing, Spotify/Apple Music metadata resolution, and YouTube integration. Configured dark-mode premium UI with glassmorphism without Tailwind. Updated dev port to 3011.
