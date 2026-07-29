@@ -1,27 +1,28 @@
 import { notFound } from 'next/navigation';
 import { getTopVideoId } from '../../lib/youtube';
+import { getPlatformLinks } from '../../lib/urlResolver';
 
 export default async function TrackPage({
   params,
   searchParams,
 }: {
   params: Promise<{ artist: string; track: string }>;
-  searchParams: Promise<{ a?: string; t?: string }>;
+  searchParams: Promise<{ a?: string; t?: string; type?: 'track' | 'album'; src?: string }>;
 }) {
-  const resolvedParams = await params;
-  const resolvedSearchParams = await searchParams;
-  const { a, t } = resolvedSearchParams;
+  const { artist, track } = await params;
+  const { a, t, type = 'track', src } = await searchParams;
   if (!a || !t) return notFound();
 
   const videoId = await getTopVideoId(a, t);
-  const spotifySearch = `https://open.spotify.com/search/${encodeURIComponent(a + ' ' + t)}`;
-  const appleSearch = `https://music.apple.com/search?term=${encodeURIComponent(a + ' ' + t)}`;
+  const { appleUrl, spotifyUrl } = await getPlatformLinks(a, t, type, src);
+
+  const isAlbum = type === 'album';
 
   return (
     <main className="main-content">
       <div className="track-card glass">
         <div className="track-header">
-          <span className="badge">Track Link</span>
+          <span className="badge">{isAlbum ? 'Album Link' : 'Track Link'}</span>
           <h1 className="track-title gradient-text">{t}</h1>
           <p className="track-artist">by {a}</p>
         </div>
@@ -37,11 +38,21 @@ export default async function TrackPage({
         )}
 
         <div className="link-buttons">
-          <a href={spotifySearch} target="_blank" rel="noopener noreferrer" className="btn btn-spotify">
-            Listen on Spotify
+          <a
+            href={spotifyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-spotify"
+          >
+            {isAlbum ? 'Listen to Album on Spotify' : 'Listen on Spotify'}
           </a>
-          <a href={appleSearch} target="_blank" rel="noopener noreferrer" className="btn btn-apple">
-            Listen on Apple Music
+          <a
+            href={appleUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-apple"
+          >
+            {isAlbum ? 'Listen to Album on Apple Music' : 'Listen on Apple Music'}
           </a>
         </div>
       </div>
