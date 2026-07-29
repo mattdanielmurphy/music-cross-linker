@@ -21,6 +21,8 @@ export default async function TrackPage({
   const a = formatSlug(artist);
   const t = formatSlug(track);
 
+  console.log('[TRACK PAGE RENDER]', { paramsArtist: artist, paramsTrack: track, type, formattedArtist: a, formattedTrack: t });
+
   if (!a || !t) return notFound();
 
   const videos = await getTopVideos(a, t, type, 5);

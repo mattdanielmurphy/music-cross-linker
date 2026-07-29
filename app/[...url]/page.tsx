@@ -10,6 +10,7 @@ export default async function CatchAllPage({
 }) {
   const resolvedParams = await params;
   const resolvedSearchParams = await searchParams;
+  console.log('[RESOLVER INGEST]', { url: resolvedParams.url, searchParams: resolvedSearchParams });
   let url = resolvedParams.url.map(decodeURIComponent).join('/');
   if (url.startsWith('https:/') && !url.startsWith('https://')) {
     url = url.replace('https:/', 'https://');
@@ -94,14 +95,15 @@ export default async function CatchAllPage({
         }
       }
     }
+    console.log('[RESOLVER EXTRACTED]', { artist, title, type });
   } catch (e) {
     console.error(e);
   }
 
   if (artist && title) {
-    redirect(
-      `/${slugify(artist)}/${slugify(title)}?type=${type}`
-    );
+    const redirectPath = `/${slugify(artist)}/${slugify(title)}?type=${type}`;
+    console.log('[RESOLVER REDIRECT]', redirectPath);
+    redirect(redirectPath);
   }
   return <div>Could not resolve track. URL: {url}</div>;
 }
