@@ -56,13 +56,13 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
     country = await detectCountryFromHeaders(h);
   }
 
-  let links = { appleUrl: '', spotifyUrl: '', youtubeUrl: '', isAlbum: false, country: country || 'CA' };
+  let links = { appleUrl: '', spotifyUrl: '', youtubeUrl: '', isAlbum: false, country: country || 'CA', resolvedTitle: undefined as string | undefined, resolvedArtist: undefined as string | undefined };
   try {
     links = await getPlatformLinks(a, t, country);
   } catch (e) {
     console.error('Failed to get platform links:', e);
   }
-  const { appleUrl, spotifyUrl, youtubeUrl, isAlbum } = links;
+  const { appleUrl, spotifyUrl, youtubeUrl, isAlbum, resolvedTitle, resolvedArtist } = links;
 
   let videoId = explicitVideoId || '';
   if (!videoId && youtubeUrl) {
@@ -74,10 +74,21 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
     videoId = videos[0]?.id || '';
   }
 
-  // Try to split the title into two display parts
-  const parsed = !a ? parseMusicTitle(t) : null;
-  const displayPrimary = parsed ? parsed.primary : t;
-  const displaySecondary = parsed ? parsed.secondary : (a || null);
+  // Determine display title/artist:
+  // 1. If iTunes resolved a real title+artist, use those
+  // 2. Otherwise try to split the formatted slug title with parseMusicTitle
+  // 3. Otherwise show full title as h1 only
+  let displayPrimary: string;
+  let displaySecondary: string | null;
+
+  if (resolvedTitle) {
+    displayPrimary = resolvedTitle;
+    displaySecondary = resolvedArtist || null;
+  } else {
+    const parsed = !a ? parseMusicTitle(t) : null;
+    displayPrimary = parsed ? parsed.primary : t;
+    displaySecondary = parsed ? parsed.secondary : (a || null);
+  }
 
   return (
     <div className="main-content">

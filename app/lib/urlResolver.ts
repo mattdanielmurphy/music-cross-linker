@@ -1,6 +1,8 @@
 export async function getPlatformLinks(artist: string, title: string, country: string = 'CA', sourceUrl?: string) {
   const countryCode = country.toUpperCase();
   let isAlbum = false;
+  let resolvedTitle: string | undefined;
+  let resolvedArtist: string | undefined;
   
   // Use title only for searches — artist from YouTube channel names is unreliable
   // If artist is provided and non-empty, include it; otherwise just title
@@ -12,14 +14,20 @@ export async function getPlatformLinks(artist: string, title: string, country: s
   // 1. Search for album
   const albumSearch = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&media=music&entity=album&country=${countryCode.toLowerCase()}&limit=1`).then(r => r.json()).catch(() => null);
   if (albumSearch?.results?.[0]?.collectionViewUrl?.includes('music.apple.com')) {
-    appleUrl = albumSearch.results[0].collectionViewUrl.split('?')[0];
+    const r = albumSearch.results[0];
+    appleUrl = r.collectionViewUrl.split('?')[0];
     isAlbum = true;
+    resolvedTitle = r.collectionName;
+    resolvedArtist = r.artistName;
   } else {
     // 2. Fallback to song
     const songSearch = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&media=music&entity=song&country=${countryCode.toLowerCase()}&limit=1`).then(r => r.json()).catch(() => null);
     if (songSearch?.results?.[0]) {
-      const rawUrl = songSearch.results[0].trackViewUrl || songSearch.results[0].collectionViewUrl;
+      const r = songSearch.results[0];
+      const rawUrl = r.trackViewUrl || r.collectionViewUrl;
       appleUrl = rawUrl ? rawUrl.split('?')[0] : appleUrl;
+      resolvedTitle = r.trackName || r.collectionName;
+      resolvedArtist = r.artistName;
     }
   }
 
@@ -35,5 +43,5 @@ export async function getPlatformLinks(artist: string, title: string, country: s
   // YouTube search — use title only
   const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(title)}`;
 
-  return { appleUrl, spotifyUrl, youtubeUrl, isAlbum, country: countryCode };
+  return { appleUrl, spotifyUrl, youtubeUrl, isAlbum, country: countryCode, resolvedTitle, resolvedArtist };
 }
