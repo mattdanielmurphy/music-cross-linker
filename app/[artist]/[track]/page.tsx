@@ -1,92 +1,63 @@
-import { notFound } from 'next/navigation';
-import { getTopVideos } from '../../lib/youtube';
+import { headers } from 'next/headers';
+import { detectCountryFromHeaders } from '../../lib/geo';
 import { getPlatformLinks } from '../../lib/urlResolver';
+import { getTopVideos } from '../../lib/youtube';
+import LinkButtons from '../../components/LinkButtons';
 
-export default async function TrackPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ artist: string; track: string }>;
-  searchParams: Promise<{ type?: 'track' | 'album' }>;
-}) {
+export default async function Page({ params, searchParams }: any) {
   const { artist, track } = await params;
-  const { type = 'track' } = await searchParams;
-
   const formatSlug = (slug: string) =>
     decodeURIComponent(slug)
       .split('-')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
-
   const a = formatSlug(artist);
   const t = formatSlug(track);
+  const resolvedSearchParams = await searchParams;
+  let country = resolvedSearchParams.country;
 
-  console.log('[TRACK PAGE RENDER]', { paramsArtist: artist, paramsTrack: track, type, formattedArtist: a, formattedTrack: t });
+  if (!country) {
+    const h = await headers();
+    country = await detectCountryFromHeaders(h);
+  }
 
-  if (!a || !t) return notFound();
+  const links = await getPlatformLinks(a, t, country);
+  const { appleUrl, spotifyUrl, youtubeUrl, isAlbum } = links;
 
-  const videos = await getTopVideos(a, t, type, 5);
-  const videoId = videos.length > 0 ? videos[0].id : null;
-  const { appleUrl, spotifyUrl } = await getPlatformLinks(a, t, type);
+  let videoId = '';
+  if (youtubeUrl) {
+    const match = youtubeUrl.match(/(?:v=|\/embed\/|\/watch\?v=|\/youtu\.be\/)([^"&?\/\s]{11})/);
+    videoId = match ? match[1] : '';
+  }
 
-  const isAlbum = type === 'album';
+  if (!videoId) {
+    const videos = await getTopVideos(a, t, 'track', 5);
+    videoId = videos[0]?.id || '';
+  }
 
   return (
-    <main className="main-content">
+    <div className="main-content">
       <div className="track-card glass">
-        <div className="track-header">
-          <span className="badge">{isAlbum ? 'Album Link' : 'Track Link'}</span>
-          <h1 className="track-title gradient-text">{t}</h1>
+        <header className="track-header">
+          <div className="badge">{isAlbum ? 'Album Link' : 'Track Link'}</div>
+          <h1 className="track-title">{t}</h1>
           <p className="track-artist">by {a}</p>
-        </div>
-
+        </header>
+        
         {videoId && (
           <div className="player-wrapper">
-            <iframe
+            <iframe 
               src={`https://www.youtube.com/embed/${videoId}?autoplay=0`}
-              title={`${t} by ${a}`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen={true}
+              title={`${t} by ${a}`} 
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+              allowFullScreen 
               suppressHydrationWarning={true}
             />
           </div>
         )}
 
-        {videos.length > 0 && (
-          <div className="candidates-section" style={{ marginTop: '1.5rem', textAlign: 'left' }}>
-            <h3 style={{ fontSize: '0.95rem', opacity: 0.8, marginBottom: '0.5rem' }}>Top YouTube Results ({videos.length})</h3>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {videos.map((vid, idx) => (
-                <li key={vid.id} style={{ fontSize: '0.85rem', background: 'rgba(255, 255, 255, 0.05)', padding: '0.5rem 0.75rem', borderRadius: '6px' }}>
-                  <a href={`https://www.youtube.com/watch?v=${vid.id}`} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', display: 'flex', gap: '0.5rem' }}>
-                    <span style={{ opacity: 0.5 }}>#{idx + 1}</span>
-                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{vid.title}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="link-buttons">
-          <a
-            href={spotifyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-spotify"
-          >
-            {isAlbum ? 'Listen to Album on Spotify' : 'Listen on Spotify'}
-          </a>
-          <a
-            href={appleUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-apple"
-          >
-            {isAlbum ? 'Listen to Album on Apple Music' : 'Listen on Apple Music'}
-          </a>
-        </div>
+        <LinkButtons appleUrl={appleUrl} spotifyUrl={spotifyUrl} youtubeUrl={youtubeUrl} country={country} />
       </div>
-    </main>
+    </div>
   );
 }

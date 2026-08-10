@@ -5,6 +5,8 @@ export interface OdesliResult {
   appleUrl?: string;
   spotifyUrl?: string;
   youtubeUrl?: string;
+  type?: 'track' | 'album';
+  originalUrl?: string;
 }
 
 export async function fetchOdesliByUrl(sourceUrl: string): Promise<OdesliResult | null> {
@@ -18,17 +20,24 @@ export async function fetchOdesliByUrl(sourceUrl: string): Promise<OdesliResult 
     const entityId = data.entityUniqueId;
     const entity = data.entitiesByUniqueId?.[entityId];
     
-    const appleUrl = data.linksByPlatform?.appleMusic?.url || data.linksByPlatform?.itunes?.url;
-    const spotifyUrl = data.linksByPlatform?.spotify?.url;
-    const youtubeUrl = data.linksByPlatform?.youtube?.url || data.linksByPlatform?.youtubeMusic?.url;
+    let appleUrl = data.linksByPlatform?.appleMusic?.url || data.linksByPlatform?.itunes?.url;
+    let spotifyUrl = data.linksByPlatform?.spotify?.url;
+    let youtubeUrl = data.linksByPlatform?.youtube?.url || data.linksByPlatform?.youtubeMusic?.url;
+
+    // Clean up geo.music.apple.com links if needed
+    if (appleUrl && appleUrl.includes('geo.music.apple.com')) {
+      appleUrl = appleUrl.replace('geo.music.apple.com', 'music.apple.com');
+    }
 
     return {
       title: entity?.title,
       artistName: entity?.artistName,
       thumbnailUrl: entity?.thumbnailUrl,
+      type: entity?.type === 'album' ? 'album' : 'track',
       appleUrl,
       spotifyUrl,
       youtubeUrl,
+      originalUrl: sourceUrl,
     };
   } catch (e) {
     console.error('Odesli API lookup failed:', e);

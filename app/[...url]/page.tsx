@@ -1,30 +1,25 @@
+import { redirect } from 'next/navigation';
 import { fetchOdesliByUrl } from '../lib/odesli';
-...
-  let artist = '';
-  let title = '';
-  let type: 'track' | 'album' = 'track';
+import { slugify } from '../lib/slugify';
 
-  const odesliData = await fetchOdesliByUrl(url);
-  if (odesliData?.artistName && odesliData?.title) {
-    artist = odesliData.artistName;
-    title = odesliData.title;
-  } else {
-    try {
-      if (url.includes('music.apple.com')) {
-        // ... rest of the original logic
-      } else if (url.includes('open.spotify.com')) {
-        // ...
-      }
-    } catch (e) {
-      console.error(e);
-    }
+export default async function Page({ params }: { params: Promise<{ url: string[] }> }) {
+  const resolvedParams = await params;
+  const urlSegments = resolvedParams.url || [];
+  
+  // Reconstruct full URL if it started with http/https
+  let rawUrl = urlSegments.join('/');
+  if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
+    rawUrl = 'https://' + rawUrl;
   }
 
+  const odesli = await fetchOdesliByUrl(rawUrl);
 
-  if (artist && title) {
-    const redirectPath = `/${slugify(artist)}/${slugify(title)}?type=${type}`;
-    console.log('[RESOLVER REDIRECT]', redirectPath);
-    redirect(redirectPath);
+  if (odesli?.artistName && odesli?.title) {
+    const artistSlug = slugify(odesli.artistName);
+    const titleSlug = slugify(odesli.title);
+    redirect(`/${artistSlug}/${titleSlug}`);
   }
-  return <div>Could not resolve track. URL: {url}</div>;
+
+  // Fallback to home if resolution failed
+  redirect('/');
 }
