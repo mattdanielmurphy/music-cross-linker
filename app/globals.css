@@ -44,7 +44,7 @@ body {
 
 .track-card {
   width: 100%;
-  max-width: 480px;
+  max-width: 720px;
   border-radius: var(--radius-lg);
   padding: 2rem;
   display: flex;
