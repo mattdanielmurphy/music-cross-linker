@@ -4,35 +4,50 @@ import { getPlatformLinks } from '../../lib/urlResolver';
 import { getTopVideos } from '../../lib/youtube';
 import LinkButtons from '../LinkButtons';
 
-/** Strip trailing year, feat., remaster, etc. from a title segment */
+/** Extract year (4-digit) from a string, return { text, year } */
+function extractYear(s: string): { text: string; year: string | null } {
+  const m = s.match(/\s*[\(\[\-]?\s*(\d{4})\s*[\)\]]?\s*$/);
+  if (m && parseInt(m[1]) >= 1900 && parseInt(m[1]) <= 2100) {
+    return { text: s.slice(0, m.index).trim(), year: m[1] };
+  }
+  return { text: s, year: null };
+}
+
+/** Strip noise (feat., remaster, official, etc.) but NOT year (handled separately) */
 function cleanSegment(s: string): string {
   return s
-    .replace(/\s*\(?(\d{4}|feat\.?.*|ft\.?.*|remaster(ed)?|official.*|audio.*|video.*|lyrics?)\)?\s*$/i, '')
-    .replace(/["'\[\]]/g, '')
+    .replace(/\s*(feat\.?.*|ft\.?.*|remaster(ed)?|official.*|audio.*|video.*|lyrics?)\s*$/i, '')
+    .replace(/["\u201C\u201D'\[\]]/g, '')
     .trim();
 }
 
 /**
- * Try to split a music title into { primary, secondary }.
+ * Try to split a music title into { primary, secondary, year }.
  * Handles: "Artist - Title", "Artist: Title", "Title | Artist",
  *          'Artist "Title" (Year)', "Artist — Title", "Artist ~ Title"
  * Returns null if no recognisable pattern found.
  */
-function parseMusicTitle(title: string): { primary: string; secondary: string } | null {
-  // Separators to try in priority order
-  const seps = [' - ', ' – ', ' — ', ' | ', ': ', ' ~ '];
+function parseMusicTitle(title: string): { primary: string; secondary: string; year: string | null } | null {
+  const seps = [' - ', ' \u2013 ', ' \u2014 ', ' | ', ': ', ' ~ '];
   for (const sep of seps) {
     const idx = title.indexOf(sep);
     if (idx > 0) {
-      const left = cleanSegment(title.slice(0, idx));
-      const right = cleanSegment(title.slice(idx + sep.length));
-      if (left && right) return { primary: left, secondary: right };
+      const rawLeft = title.slice(0, idx);
+      const rawRight = title.slice(idx + sep.length);
+      // Extract year from whichever side has it
+      const { text: rightClean, year: rightYear } = extractYear(rawRight);
+      const { text: leftClean, year: leftYear } = extractYear(rawLeft);
+      const year = rightYear || leftYear || null;
+      const left = cleanSegment(leftClean);
+      const right = cleanSegment(rightClean);
+      if (left && right) return { primary: left, secondary: right, year };
     }
   }
-  // Pattern: Artist "Title" ...
+  // Pattern: Artist "Title" (Year) or Artist "Title"
   const quotedMatch = title.match(/^(.+?)\s+["\u201C](.+?)["\u201D]/);
   if (quotedMatch) {
-    return { primary: cleanSegment(quotedMatch[1]), secondary: cleanSegment(quotedMatch[2]) };
+    const { text: rightClean, year } = extractYear(quotedMatch[2]);
+    return { primary: cleanSegment(quotedMatch[1]), secondary: cleanSegment(rightClean), year };
   }
   return null;
 }
@@ -56,13 +71,13 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
     country = await detectCountryFromHeaders(h);
   }
 
-  let links = { appleUrl: '', spotifyUrl: '', youtubeUrl: '', isAlbum: false, country: country || 'CA', resolvedTitle: undefined as string | undefined, resolvedArtist: undefined as string | undefined };
+  let links = { appleUrl: '', spotifyUrl: '', youtubeUrl: '', isAlbum: false, country: country || 'CA' };
   try {
     links = await getPlatformLinks(a, t, country);
   } catch (e) {
     console.error('Failed to get platform links:', e);
   }
-  const { appleUrl, spotifyUrl, youtubeUrl, isAlbum, resolvedTitle, resolvedArtist } = links;
+  const { appleUrl, spotifyUrl, youtubeUrl, isAlbum } = links;
 
   let videoId = explicitVideoId || '';
   if (!videoId && youtubeUrl) {
@@ -74,28 +89,21 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
     videoId = videos[0]?.id || '';
   }
 
-  // Determine display title/artist:
-  // 1. If iTunes resolved a real title+artist, use those
-  // 2. Otherwise try to split the formatted slug title with parseMusicTitle
-  // 3. Otherwise show full title as h1 only
-  let displayPrimary: string;
-  let displaySecondary: string | null;
-
-  if (resolvedTitle) {
-    displayPrimary = resolvedTitle;
-    displaySecondary = resolvedArtist || null;
-  } else {
-    const parsed = !a ? parseMusicTitle(t) : null;
-    displayPrimary = parsed ? parsed.primary : t;
-    displaySecondary = parsed ? parsed.secondary : (a || null);
-  }
+  // Parse title into display parts (only when artist isn't already known from slug store)
+  const parsed = !a ? parseMusicTitle(t) : null;
+  const displayPrimary = parsed ? parsed.primary : t;
+  const displaySecondary = parsed ? parsed.secondary : (a || null);
+  const displayYear = parsed?.year || null;
 
   return (
     <div className="main-content">
       <div className="track-card">
         <header className="track-header">
           <div className="badge">{isAlbum ? 'Album Link' : 'Track Link'}</div>
-          <h1 className="track-title accent-text">{displayPrimary}</h1>
+          <h1 className="track-title accent-text">
+            {displayPrimary}
+            {displayYear && <span className="year-chip">{displayYear}</span>}
+          </h1>
           {displaySecondary && <h2 className="track-artist">{displaySecondary}</h2>}
         </header>
         
