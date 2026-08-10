@@ -74,5 +74,28 @@ export async function fetchOdesliByUrl(sourceUrl: string): Promise<OdesliResult 
     }
   }
 
+  // Fallback for YouTube URLs
+  const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?/\s]{11})/;
+  const match = sourceUrl.match(youtubeRegex);
+  if (match && match[1]) {
+    const videoId = match[1];
+    try {
+      const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          title: data.title,
+          artistName: data.author_name,
+          thumbnailUrl: data.thumbnail_url,
+          type: 'track',
+          youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          originalUrl: sourceUrl,
+        };
+      }
+    } catch (e) {
+      console.error('YouTube oEmbed fallback error:', e);
+    }
+  }
+
   return null;
 }

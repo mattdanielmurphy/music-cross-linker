@@ -79,7 +79,10 @@ body {
 
 .track-artist {
   font-size: 1.125rem;
+  font-weight: 400;
   color: var(--text-secondary);
+  margin: 0;
+  margin-top: 0.15rem;
 }
 
 .player-wrapper {

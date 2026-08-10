@@ -11,8 +11,8 @@ export async function getTopVideos(
 ): Promise<YouTubeVideoCandidate[]> {
   const isAlbum = type === 'album';
   const queryText = isAlbum
-    ? `${artist} ${title} full album`
-    : `${artist} ${title} official audio`;
+    ? (artist ? `${artist} ${title} full album` : `${title} full album`)
+    : (artist ? `${artist} ${title} official audio` : `${title} official audio`);
   const query = encodeURIComponent(queryText);
   console.log('[YOUTUBE SEARCH QUERY]', { artist, title, type, queryText });
   const res = await fetch(`https://www.youtube.com/results?search_query=${query}`, {
