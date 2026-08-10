@@ -8,8 +8,10 @@ export default async function Page({ params }: { params: Promise<{ url: string[]
   
   // Reconstruct full URL if it started with http/https
   let rawUrl = urlSegments.join('/');
-  // Clean up any mangled protocol like 'https:/music.apple.com' or 'http:/music.apple.com'
-  rawUrl = rawUrl.replace(/^(https?:\/+)/, '');
+  // Decode URI component if it was percent-encoded
+  rawUrl = decodeURIComponent(rawUrl);
+  // Strip any repeated protocol prefixes
+  rawUrl = rawUrl.replace(/^(https?:\/\/)+/, '').replace(/^(https?:\/+)/, '');
   rawUrl = 'https://' + rawUrl;
 
   const odesli = await fetchOdesliByUrl(rawUrl);

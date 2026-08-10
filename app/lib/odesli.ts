@@ -46,7 +46,9 @@ export async function fetchOdesliByUrl(sourceUrl: string): Promise<OdesliResult 
   // Fallback for Apple Music URLs when song.link rate-limits (HTTP 429) or fails
   if (sourceUrl.includes('music.apple.com')) {
     try {
-      const urlStr = sourceUrl.replace(/^(https?:\/+)/, 'https://');
+      let urlStr = decodeURIComponent(sourceUrl);
+      urlStr = urlStr.replace(/^(https?:\/\/)+/, '').replace(/^(https?:\/+)/, '');
+      urlStr = 'https://' + urlStr;
       const url = new URL(urlStr);
       const pathParts = url.pathname.split('/');
       const id = pathParts.find((part) => /^\d+$/.test(part) || part.startsWith('id'))?.replace('id', '');

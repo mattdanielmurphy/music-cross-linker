@@ -37,10 +37,10 @@ export default async function Page({ params, searchParams }: any) {
 
   return (
     <div className="main-content">
-      <div className="track-card glass">
+      <div className="track-card">
         <header className="track-header">
           <div className="badge">{isAlbum ? 'Album Link' : 'Track Link'}</div>
-          <h1 className="track-title">{t}</h1>
+          <h1 className="track-title accent-text">{t}</h1>
           <p className="track-artist">by {a}</p>
         </header>
         
