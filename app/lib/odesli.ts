@@ -10,7 +10,42 @@ export interface OdesliResult {
 }
 
 export async function fetchOdesliByUrl(sourceUrl: string): Promise<OdesliResult | null> {
-  // Try Odesli API first
+  // 1. Direct Apple Music lookup with Country Code extraction
+  if (sourceUrl.includes('music.apple.com')) {
+    try {
+      let urlStr = decodeURIComponent(sourceUrl);
+      urlStr = urlStr.replace(/^(https?:\/\/)+/, '').replace(/^(https?:\/+)/, '');
+      urlStr = 'https://' + urlStr;
+      const url = new URL(urlStr);
+      const pathParts = url.pathname.split('/');
+      
+      // Extract country code (e.g. 'ca') and entity ID
+      const country = pathParts[1] && pathParts[1].length === 2 ? pathParts[1] : 'us';
+      const id = pathParts.find((part) => /^\d+$/.test(part) || part.startsWith('id'))?.replace('id', '');
+
+      if (id) {
+        const lookup = await fetch(`https://itunes.apple.com/lookup?id=${id}&country=${country}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+
+        const item = lookup?.results?.[0];
+        if (item && item.artistName) {
+          return {
+            title: item.collectionName || item.trackName,
+            artistName: item.artistName,
+            thumbnailUrl: item.artworkUrl100,
+            type: item.wrapperType === 'collection' || item.collectionType ? 'album' : 'track',
+            appleUrl: item.collectionViewUrl || item.trackViewUrl,
+            originalUrl: sourceUrl,
+          };
+        }
+      }
+    } catch (e) {
+      console.error('Apple Music lookup error:', e);
+    }
+  }
+
+  // 2. Odesli (Songlink) API
   try {
     const res = await fetch(
       `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(sourceUrl)}`
@@ -43,38 +78,7 @@ export async function fetchOdesliByUrl(sourceUrl: string): Promise<OdesliResult 
     console.error('Odesli API lookup failed:', e);
   }
 
-  // Fallback for Apple Music URLs when song.link rate-limits (HTTP 429) or fails
-  if (sourceUrl.includes('music.apple.com')) {
-    try {
-      let urlStr = decodeURIComponent(sourceUrl);
-      urlStr = urlStr.replace(/^(https?:\/\/)+/, '').replace(/^(https?:\/+)/, '');
-      urlStr = 'https://' + urlStr;
-      const url = new URL(urlStr);
-      const pathParts = url.pathname.split('/');
-      const id = pathParts.find((part) => /^\d+$/.test(part) || part.startsWith('id'))?.replace('id', '');
-      
-      if (id) {
-        const lookup = await fetch(`https://itunes.apple.com/lookup?id=${id}`)
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null);
-
-        const item = lookup?.results?.[0];
-        if (item) {
-          return {
-            title: item.collectionName || item.trackName,
-            artistName: item.artistName,
-            type: item.wrapperType === 'collection' ? 'album' : 'track',
-            appleUrl: item.collectionViewUrl || item.trackViewUrl,
-            originalUrl: sourceUrl,
-          };
-        }
-      }
-    } catch (e) {
-      console.error('Apple Music fallback error:', e);
-    }
-  }
-
-  // Fallback for YouTube URLs
+  // 3. Fallback for YouTube URLs
   const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?/\s]{11})/;
   const match = sourceUrl.match(youtubeRegex);
   if (match && match[1]) {

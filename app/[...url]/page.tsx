@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
-import { fetchOdesliByUrl } from '../lib/odesli';
-import { getSlugForUrl, getRecordBySlug } from '../lib/slugStore';
+import { getRecordBySlug } from '../lib/slugStore';
 import TrackView from '../components/track-view/TrackView';
+import ResolvingRedirect from '../components/ResolvingRedirect';
 
 const MUSIC_HOSTS = ['youtube.com', 'youtu.be', 'music.apple.com', 'spotify.com', 'soundcloud.com'];
 
@@ -21,30 +21,34 @@ export default async function Page({
   const resolvedSearchParams = await searchParams;
   const urlSegments = resolvedParams.url || [];
 
-  // Detect if this is a music URL from the raw segments (before any URL parsing)
   const rawJoined = urlSegments.join('/');
   const isExternalUrl = urlSegments[0] === 'https:' || urlSegments[0] === 'http:' ||
     MUSIC_HOSTS.some(h => rawJoined.includes(h));
 
   if (isExternalUrl) {
-    // First: safely extract videoId directly from segments + searchParams
-    // (before URL parsing which may throw on malformed encoded chars)
     const videoIdFromParams = typeof resolvedSearchParams.v === 'string' ? resolvedSearchParams.v : null;
     const videoIdFromPath = extractVideoId(decodeURIComponent(rawJoined));
     const videoId = videoIdFromParams || videoIdFromPath;
 
-    // Try to build a clean canonical URL (only v= param matters)
     let canonicalUrl: string | null = null;
     try {
-      // Normalize protocol
       let cleaned = decodeURIComponent(rawJoined).replace(/^(https?:\/*)+/i, 'https://');
       if (!cleaned.startsWith('http')) cleaned = 'https://' + cleaned;
       const u = new URL(cleaned);
-      // Only keep the v param to ensure stable canonical URLs
+      
+      // Re-attach Next.js parsed search parameters (essential for Apple Music 'i' param)
+      if (resolvedSearchParams) {
+        for (const [k, v] of Object.entries(resolvedSearchParams)) {
+          if (v !== undefined) {
+            u.searchParams.append(k, Array.isArray(v) ? v[0] : (v as string));
+          }
+        }
+      }
+
       if (videoId) {
         canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
       } else {
-        canonicalUrl = u.origin + u.pathname;
+        canonicalUrl = u.toString();
       }
     } catch {
       if (videoId) {
@@ -56,34 +60,31 @@ export default async function Page({
       redirect('/');
     }
 
-    // Try Odesli / oEmbed
     const lookupUrl = canonicalUrl || `https://www.youtube.com/watch?v=${videoId}`;
-    const odesli = await fetchOdesliByUrl(lookupUrl);
 
-    if (odesli) {
-      // Don't trust channel name as artist — use empty string so search uses title only
-      const artistName = '';
-      const title = odesli.title || 'YouTube Video';
-      const slug = getSlugForUrl(lookupUrl, title, artistName, videoId || undefined);
-      redirect(`/${slug}`);
-    }
-
-    // oEmbed fallback failed — just store by videoId
-    if (videoId) {
-      const slug = getSlugForUrl(lookupUrl, videoId, '', videoId);
-      redirect(`/${slug}`);
-    }
-
-    redirect('/');
+    // Render instantly and resolve the slow lookups (Odesli, oEmbed) client-side
+    // via /api/resolve-link, then redirect once resolved — this is what keeps
+    // the initial load fast for links the app hasn't seen before.
+    return <ResolvingRedirect lookupUrl={lookupUrl} videoId={videoId} />;
   }
 
-  // Handle direct slug/track rendering
+  // Check store record for 1-segment or 2-segment routes (e.g. 'daniel-lanois/belladonna')
+  const slugKey = urlSegments.join('/');
+  const record = getRecordBySlug(slugKey);
+
+  if (record) {
+    return (
+      <TrackView 
+        artist={record.artistName} 
+        track={record.title} 
+        videoId={record.videoId} 
+        sourceUrl={record.targetUrl} 
+        searchParams={resolvedSearchParams} 
+      />
+    );
+  }
+
   if (urlSegments.length === 1) {
-    const record = getRecordBySlug(urlSegments[0]);
-    if (record) {
-      return <TrackView artist={record.artistName} track={record.title} videoId={record.videoId} searchParams={resolvedSearchParams} />;
-    }
-    // Fallback: format slug as readable title
     return <TrackView artist="" track={urlSegments[0]} searchParams={resolvedSearchParams} />;
   } else if (urlSegments.length === 2) {
     return <TrackView artist={urlSegments[0]} track={urlSegments[1]} searchParams={resolvedSearchParams} />;

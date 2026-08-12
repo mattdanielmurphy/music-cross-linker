@@ -14,3 +14,5 @@
 ### 2026-07-29 02:00: Added server-side console logging for pipeline visibility. [Log File](file:///Users/matt/projects/music-cross-linker/agent-logs/2026-07-29_02-00_pipeline-logging.md)
 
 2026-07-29: Integrated Odesli API for reliable cross-platform music entity resolution, ensuring 100% accuracy in link generation and platform mapping.
+
+- Fixed Vercel deployment crash by resolving read-only filesystem error in slugStore and preserving Apple Music query params in route resolver.

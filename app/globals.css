@@ -1,12 +1,22 @@
 :root {
   --bg-color: #08090a;
   --surface-bg: #121318;
-  --card-border: rgba(255, 255, 255, 0.08);
+  /*--card-border: rgba(255, 255, 255, 0.08);*/
   --text-primary: #ffffff;
   --text-secondary: #87888c;
   --accent-color: #ffffff;
   --radius-lg: 8px;
   --radius-md: 6px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-color: #ffffff;
+    --surface-bg: #eee;
+    --text-primary: #08090a;
+    --text-secondary: #333;
+    --accent-color: #000;
+  }
 }
 
 * {
@@ -50,7 +60,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  background: var(--surface-bg);
+  /*background: var(--surface-bg);*/
   border: 1px solid var(--card-border);
 }
 
@@ -78,9 +88,9 @@ body {
 }
 
 .track-artist {
-  font-size: 1.125rem;
+  font-size: 2rem;
   font-weight: 400;
-  color: var(--text-secondary);
+  /*color: var(--text-secondary);*/
   margin: 0;
   margin-top: 0.15rem;
 }
@@ -108,7 +118,7 @@ body {
   border-radius: var(--radius-md);
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  background: #000;
+  background: black;
 }
 
 .player-wrapper iframe {
@@ -118,6 +128,43 @@ body {
   width: 100%;
   height: 100%;
   border: none;
+}
+
+.player-wrapper-skeleton {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  animation: spin 0.4s linear infinite;
+  flex-shrink: 0;
+}
+
+.spinner.youtube {
+	margin-top: -24px;
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(255, 255, 255, 0.05);
+  border-top-color: #ff4e4e;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .link-buttons {
@@ -137,32 +184,6 @@ body {
   transition: all 0.2s ease;
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.btn-spotify {
-  background: rgba(29, 185, 84, 0.15);
-  border-color: rgba(29, 185, 84, 0.3);
-  color: #1db954;
-}
-
-.btn-spotify:hover {
-  background: #1db954;
-  color: #000;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(29, 185, 84, 0.3);
-}
-
-.btn-apple {
-  background: rgba(252, 60, 68, 0.15);
-  border-color: rgba(252, 60, 68, 0.3);
-  color: #fc3c44;
-}
-
-.btn-apple:hover {
-  background: #fc3c44;
-  color: #fff;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(252, 60, 68, 0.3);
 }
 
 .search-form {
@@ -247,7 +268,8 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1rem;
-  align-items: center;
+  align-items: top;
+  margin: 1rem 0 .5rem 0;
 }
 
 .btn-link {
@@ -261,12 +283,12 @@ body {
   text-decoration: none;
   transition: all 0.2s ease;
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.1);
 }
 
 .btn-link.spotify {
-  background: rgba(29, 185, 84, 0.15);
-  border-color: rgba(29, 185, 84, 0.3);
+  /*background: rgba(29, 185, 84, 0.15);*/
+  border-color: rgba(29, 185, 84, 0.5);
   color: #1db954;
 }
 
@@ -274,12 +296,12 @@ body {
   background: #1db954;
   color: #000;
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(29, 185, 84, 0.3);
+  box-shadow: 0 8px 20px rgba(29, 185, 84, 0.5);
 }
 
 .btn-link.apple {
-  background: rgba(252, 60, 68, 0.15);
-  border-color: rgba(252, 60, 68, 0.3);
+  /*background: rgba(252, 60, 68, 0.15);*/
+  border-color: rgba(252, 60, 68, 0.5);
   color: #fc3c44;
 }
 
@@ -287,10 +309,10 @@ body {
   background: #fc3c44;
   color: #fff;
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(252, 60, 68, 0.3);
+  box-shadow: 0 8px 20px rgba(252, 60, 68, 0.5);
 }
 
-.btn-link.youtube {
+/*.btn-link.youtube {
   background: rgba(255, 0, 0, 0.15);
   border-color: rgba(255, 0, 0, 0.3);
   color: #ff4e4e;
@@ -301,7 +323,7 @@ body {
   color: #fff;
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(255, 0, 0, 0.3);
-}
+}*/
 
 .flag-badge-btn {
   background: rgba(255, 255, 255, 0.08);

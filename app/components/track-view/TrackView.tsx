@@ -1,8 +1,13 @@
+import { Suspense } from 'react';
 import { headers } from 'next/headers';
 import { detectCountryFromHeaders } from '../../lib/geo';
-import { getPlatformLinks } from '../../lib/urlResolver';
-import { getTopVideos } from '../../lib/youtube';
+import { resolveEntity } from '../../lib/urlResolver';
 import LinkButtons from '../LinkButtons';
+import YouTubeSection from './YouTubeSection';
+import AppleSection from './AppleSection';
+import SpotifySection from './SpotifySection';
+import PlayerSkeleton from './PlayerSkeleton';
+import LoadingChip from './LoadingChip';
 
 /** Extract year (4-digit) from a string, return { text, year } */
 function extractYear(s: string): { text: string; year: string | null } {
@@ -52,7 +57,7 @@ function parseMusicTitle(title: string): { primary: string; secondary: string; y
   return null;
 }
 
-export default async function TrackView({ artist, track, videoId: explicitVideoId, searchParams }: any) {
+export default async function TrackView({ artist, track, videoId: explicitVideoId, sourceUrl, searchParams }: any) {
   const formatSlug = (slug: string) =>
     decodeURIComponent(slug)
       .split('-')
@@ -63,35 +68,37 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
   const isSlugLike = /^[a-z0-9]+(-[a-z0-9]+)*$/.test(track);
   const a = artist ? formatSlug(artist) : '';
   const t = isSlugLike ? formatSlug(track) : track;
-  
-  let country = searchParams?.country;
 
+  let country = searchParams?.country;
   if (!country) {
     const h = await headers();
     country = await detectCountryFromHeaders(h);
   }
 
-  let links = { appleUrl: '', spotifyUrl: '', youtubeUrl: '', isAlbum: false, country: country || 'CA' };
+  // This is the only thing we block the initial render on: one cheap DB round
+  // trip to find-or-create the canonical entity. Every platform lookup below
+  // (iTunes, Spotify, YouTube) happens independently, in parallel, streamed in
+  // via Suspense as soon as each resolves — the page shell renders instantly.
+  let ctx;
   try {
-    links = await getPlatformLinks(a, t, country);
+    ctx = await resolveEntity(a, t, country || 'CA', sourceUrl);
   } catch (e) {
-    console.error('Failed to get platform links:', e);
+    console.error('Failed to resolve entity:', e);
+    ctx = {
+      entityId: '',
+      isAlbum: false,
+      country: country || 'CA',
+      sourcePlatform: 'unknown' as const,
+      cleanArtist: a,
+      cleanTitle: t,
+      searchTerm: a ? `${a} ${t}` : t,
+      cached: {},
+    };
   }
-  const { appleUrl, spotifyUrl, youtubeUrl, isAlbum } = links;
 
-  let videoId = explicitVideoId || '';
-  if (!videoId && youtubeUrl) {
-    const match = youtubeUrl.match(/(?:v=|\/embed\/|\/watch\?v=|\/youtu\.be\/)([^"&?\/\s]{11})/);
-    videoId = match ? match[1] : '';
-  }
-  if (!videoId) {
-    const videos = await getTopVideos(a || t, t, 'track', 5);
-    videoId = videos[0]?.id || '';
-  }
-
-  // Parse title into display parts (only when artist isn't already known from slug store)
-  const parsed = !a ? parseMusicTitle(t) : null;
-  const displayPrimary = parsed ? parsed.primary : t;
+  const displaySource = t;
+  const parsed = !a ? parseMusicTitle(displaySource) : null;
+  const displayPrimary = parsed ? parsed.primary : displaySource;
   const displaySecondary = parsed ? parsed.secondary : (a || null);
   const displayYear = parsed?.year || null;
 
@@ -99,27 +106,30 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
     <div className="main-content">
       <div className="track-card">
         <header className="track-header">
-          <div className="badge">{isAlbum ? 'Album Link' : 'Track Link'}</div>
+          <div className="badge">{ctx.isAlbum ? 'Album Link' : 'Track Link'}</div>
           <h1 className="track-title accent-text">
             {displayPrimary}
             {displayYear && <span className="year-chip">{displayYear}</span>}
           </h1>
           {displaySecondary && <h2 className="track-artist">{displaySecondary}</h2>}
         </header>
-        
-        {videoId && (
-          <div className="player-wrapper">
-            <iframe 
-              src={`https://www.youtube.com/embed/${videoId}?autoplay=0`}
-              title={`${t} by ${a}`} 
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-              allowFullScreen 
-              suppressHydrationWarning={true}
-            />
-          </div>
-        )}
 
-        <LinkButtons appleUrl={appleUrl} spotifyUrl={spotifyUrl} youtubeUrl={youtubeUrl} country={country} />
+        {/* YouTube — highest priority, streamed in first */}
+        <Suspense fallback={<PlayerSkeleton />}>
+          <YouTubeSection ctx={ctx} artist={a} title={t} explicitVideoId={explicitVideoId} sourceUrl={sourceUrl} />
+        </Suspense>
+
+        <LinkButtons>
+          {/* Spotify — second priority */}
+          <Suspense fallback={<LoadingChip platform="spotify" />}>
+            <SpotifySection ctx={ctx} sourceUrl={sourceUrl} />
+          </Suspense>
+
+          {/* Apple Music — third priority */}
+          <Suspense fallback={<LoadingChip platform="apple_music" />}>
+            <AppleSection ctx={ctx} sourceUrl={sourceUrl} />
+          </Suspense>
+        </LinkButtons>
       </div>
     </div>
   );
