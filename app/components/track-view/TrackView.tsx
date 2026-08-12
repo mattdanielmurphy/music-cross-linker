@@ -60,7 +60,7 @@ function parseMusicTitle(title: string): { primary: string; secondary: string; y
 export default async function TrackView({ artist, track, videoId: explicitVideoId, sourceUrl, searchParams }: any) {
   const formatSlug = (slug: string) =>
     decodeURIComponent(slug)
-      .split('-')
+      .split(/(?<!\d)-(?!\d)/)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
 

@@ -12,7 +12,7 @@ import MatchCard from './MatchCard';
  * soon as the user edits/submits the query, that same list is replaced with
  * fresh results for the new query — there's never two separate lists.
  */
-export default function CandidateList({ platform, candidates, entityId, currentUrl, initialQuery, onUpdateMatch }: any) {
+export default function CandidateList({ platform, candidates, entityId, currentUrl, initialQuery, onUpdateMatch, isNoMatch }: any) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState(initialQuery || '');
@@ -23,6 +23,13 @@ export default function CandidateList({ platform, candidates, entityId, currentU
   // be recorded honestly instead of implying full confidence.
   const [uncertain, setUncertain] = useState(false);
   const router = useRouter();
+
+  React.useEffect(() => {
+    if (isOpen && isNoMatch && !searched && initialQuery) {
+      runSearch();
+    }
+  }, [isOpen, isNoMatch, searched, initialQuery]);
+
 
   const handleSelect = async (candidate: any) => {
     setLoading(true);
@@ -90,7 +97,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
         onClick={() => setIsOpen(!isOpen)}
         style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '0.85em', textDecoration: 'underline' }}
       >
-        {isOpen ? 'Close' : 'Not Right?'}
+        {isOpen ? 'Close' : isNoMatch ? 'See search results' : 'Not Right?'}
       </button>
 
       {isOpen && (
@@ -122,7 +129,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
               </p>
             )}
 
-            {results.map((c: any) => (
+            {results.filter(c => !(typeof c.source === 'string' && c.source.endsWith('_fallback'))).map((c: any) => (
               <MatchCard
                 key={c.id || c.candidate_url}
                 candidate={c}

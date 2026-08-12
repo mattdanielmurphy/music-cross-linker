@@ -84,8 +84,8 @@ export default function PlatformButton({
           <IconAlertTriangle size={14} /> Uncertain match — might be wrong
         </div>
       )}
-      {entityId && !isExplicitSource && !isNoMatch(active) && (
-        <CandidateList platform={platform} candidates={candidates} entityId={entityId} currentUrl={currentUrl} onUpdateMatch={handleUpdateMatch} initialQuery={initialQuery} />
+      {entityId && !isExplicitSource && (
+        <CandidateList platform={platform} candidates={candidates} entityId={entityId} currentUrl={currentUrl} onUpdateMatch={handleUpdateMatch} initialQuery={initialQuery} isNoMatch={isNoMatch(active)} />
       )}
     </div>
   );

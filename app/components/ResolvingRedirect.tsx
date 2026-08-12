@@ -60,11 +60,24 @@ export default function ResolvingRedirect({
     <div className="main-content">
       <div className="track-card">
         <div className="player-wrapper">
-          <div className="player-wrapper-skeleton">
-            <span className="spinner youtube" aria-hidden="true" />
-          </div>
+          {videoId ? (
+            <iframe
+              src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
+              title="YouTube video player"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              style={{ width: '100%', height: '100%', aspectRatio: '16/9' }}
+            />
+          ) : (
+            <div className="player-wrapper-skeleton">
+              <span className="spinner youtube" aria-hidden="true" />
+            </div>
+          )}
         </div>
-        <p style={{ textAlign: 'center', opacity: 0.7, marginTop: '12px' }}>Looking up this link…</p>
+        <p style={{ textAlign: 'center', opacity: 0.7, marginTop: '12px' }}>
+          {videoId ? 'Finding cross-platform matches…' : 'Looking up this link…'}
+        </p>
       </div>
     </div>
   );

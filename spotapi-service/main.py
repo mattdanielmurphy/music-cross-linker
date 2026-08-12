@@ -27,6 +27,7 @@ def _normalize(s: str) -> str:
     s = s.lower()
     s = re.sub(r"[\(\[\{].*?[\)\]\}]", "", s)  # strip parenthetical/bracketed content
     s = _EDITION_SUFFIX_RE.sub("", s)  # strip dash-suffixed edition descriptors
+    s = re.sub(r"(?<=\d)\s*[\-–—]\s*(?=\d)", "-", s)  # preserve hyphenated number ranges e.g. 85-92
     s = re.sub(r"[^a-z0-9]+", " ", s)  # strip punctuation
     return s.strip()
 
