@@ -3,7 +3,7 @@ import { cleanYouTubeTitle } from '../../lib/youtube/titleParser';
 import { headers } from 'next/headers';
 import { detectCountryFromHeaders } from '../../lib/geo';
 import { resolveEntity } from '../../lib/urlResolver';
-import { getBestAlbumArt } from '../../lib/albumArt';
+import { resolveArtworkImage } from '../../lib/artwork';
 import { getPaletteFromImage, ThemeColors } from '../../lib/palette';
 import LinkButtons from '../LinkButtons';
 import YouTubeSection from './YouTubeSection';
@@ -96,6 +96,7 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
       cleanTitle: t,
       searchTerm: a ? `${a} ${t}` : t,
       cached: {},
+      artworkUrl: null,
     };
   }
 
@@ -105,18 +106,14 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
   const displaySecondary = parsed ? parsed.secondary : (a || null);
   const displayYear = parsed?.year || null;
 
+  // Resolve artwork
+  const artworkUrl = ctx.artworkUrl || await resolveArtworkImage(a, t, sourceUrl);
+
   // Attempt to fetch palette
   let theme: ThemeColors | null = null;
   try {
-    // In a real app, we'd probably want this to be part of the resolveEntity result
-    // or cached separately. For now we just call it.
-    const albumArt = getBestAlbumArt({
-      appleMusicUrl: ctx.cached.apple_music?.url,
-      spotifyUrl: ctx.cached.spotify?.url,
-      youtubeUrl: ctx.cached.youtube?.url,
-    });
-    if (albumArt) {
-      theme = await getPaletteFromImage(albumArt);
+    if (artworkUrl) {
+      theme = await getPaletteFromImage(artworkUrl);
     }
   } catch (e) {
     console.error('Failed to get palette:', e);

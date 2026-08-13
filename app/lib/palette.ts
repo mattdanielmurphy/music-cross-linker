@@ -11,67 +11,50 @@ export async function getPaletteFromImage(imageUrl: string): Promise<ThemeColors
   try {
     const response = await fetch(imageUrl);
     const buffer = await response.arrayBuffer();
-    let image = sharp(Buffer.from(buffer));
-    const metadata = await image.metadata();
-
-    if (imageUrl.includes('youtube.com') || imageUrl.includes('ytimg.com')) {
-      const { width, height } = metadata;
-      if (width && height) {
-        image = image.extract({
-          left: Math.floor(width * 0.25),
-          top: Math.floor(height * 0.1),
-          width: Math.floor(width * 0.5),
-          height: Math.floor(height * 0.8),
-        });
-      }
-    }
-
-    const pixels = await image
-      .resize(20, 20)
+    const pixels = await sharp(Buffer.from(buffer))
+      .resize(50, 50)
       .raw()
       .ensureAlpha()
       .toBuffer();
 
-    const colors: { r: number; g: number; b: number }[] = [];
+    const vibrantPixels: { r: number; g: number; b: number; s: number }[] = [];
     for (let i = 0; i < pixels.length; i += 4) {
       const r = pixels[i];
       const g = pixels[i + 1];
       const b = pixels[i + 2];
       
-      const isTooDark = (r + g + b < 40) || (r < 25 && g < 25 && b < 25);
-      const isTooLight = (r > 230 && g > 230 && b > 230);
+      if ((r + g + b < 40) || (r < 25 && g < 25 && b < 25) || (r > 230 && g > 230 && b > 230)) continue;
       
-      if (!isTooDark && !isTooLight) {
-        colors.push({ r, g, b });
-      }
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const s = max === 0 ? 0 : (max - min) / max;
+      vibrantPixels.push({ r, g, b, s });
     }
 
-    if (colors.length === 0) {
+    vibrantPixels.sort((a, b) => b.s - a.s);
+    const sample = vibrantPixels.slice(0, 3).map(c => `rgb(${c.r}, ${c.g}, ${c.b})`);
+    
+    if (sample.length < 2) {
       return {
-        '--bg-gradient': 'linear-gradient(135deg, #2c3e50, #000000)',
+        '--bg-gradient': 'linear-gradient(135deg, #4b0082, #008080)',
         '--text-primary': 'rgba(255, 255, 255, 0.95)',
         '--text-secondary': 'rgba(255, 255, 255, 0.7)',
-        '--card-bg': 'rgba(0, 0, 0, 0.4)',
+        '--card-bg': 'rgba(0,0,0,0.3)'
       };
     }
 
-    // Simple sampling
-    const sample = colors.filter((_, i) => i % Math.max(1, Math.floor(colors.length / 3)) === 0).slice(0, 3);
-    const colorStops = sample.map(c => `rgb(${c.r}, ${c.g}, ${c.b})`).join(', ');
-
     return {
-      '--bg-gradient': `linear-gradient(135deg, ${colorStops})`,
+      '--bg-gradient': `linear-gradient(135deg, ${sample.join(', ')})`,
       '--text-primary': 'rgba(255, 255, 255, 0.95)',
       '--text-secondary': 'rgba(255, 255, 255, 0.7)',
-      '--card-bg': 'rgba(255, 255, 255, 0.05)',
+      '--card-bg': 'rgba(0,0,0,0.3)'
     };
   } catch (e) {
-    console.error('Palette extraction failed', e);
     return {
-      '--bg-gradient': 'linear-gradient(135deg, #08090a, #121318)',
+      '--bg-gradient': 'linear-gradient(135deg, #2c3e50, #000000)',
       '--text-primary': 'rgba(255, 255, 255, 0.95)',
       '--text-secondary': 'rgba(255, 255, 255, 0.7)',
-      '--card-bg': 'rgba(0, 0, 0, 0.4)',
+      '--card-bg': 'rgba(0,0,0,0.3)'
     };
   }
 }

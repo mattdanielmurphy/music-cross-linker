@@ -263,6 +263,7 @@ export interface EntityContext {
   cleanArtist: string;
   cleanTitle: string;
   searchTerm: string;
+  artworkUrl?: string | null;
   /** Matches already known for this entity (from a previous resolution), keyed by platform. */
   cached: Partial<Record<Platform, CachedMatch>>;
 }
@@ -315,6 +316,7 @@ export async function resolveEntity(
   const fingerprint = fingerprintFor(cleanArtist, cleanTitle);
 
   let entityId: string | null = null;
+  let artworkUrl: string | null = null;
   const cached: Partial<Record<Platform, CachedMatch>> = {};
 
   // 1. Try to find a matching URL directly among previously cached candidates —
@@ -338,11 +340,14 @@ export async function resolveEntity(
   // the correct fingerprint inline in the query instead.
   if (!entityId && fingerprint) {
     const byFingerprint = await sql`
-      SELECT id FROM resolved_entities
+      SELECT id, artwork_url FROM resolved_entities
       WHERE regexp_replace(lower(coalesce(artist,'')||'|'||coalesce(title,'')), '[^a-z0-9|]', '', 'g') = ${fingerprint}
       ORDER BY created_at ASC LIMIT 1
     `;
-    if (byFingerprint[0]?.id) entityId = byFingerprint[0].id;
+    if (byFingerprint[0]?.id) {
+      entityId = byFingerprint[0].id;
+      artworkUrl = byFingerprint[0].artwork_url;
+    }
   }
 
   if (entityId) {
@@ -369,7 +374,7 @@ export async function resolveEntity(
     entityId = inserted[0].id;
   }
 
-  return { entityId: entityId as string, isAlbum, country: countryCode, sourcePlatform, cleanArtist, cleanTitle, searchTerm, cached };
+  return { entityId: entityId as string, isAlbum, country: countryCode, sourcePlatform, cleanArtist, cleanTitle, searchTerm, cached, artworkUrl };
 }
 
 /** Persist the auto-picked match for a platform, without clobbering a manual override. */
