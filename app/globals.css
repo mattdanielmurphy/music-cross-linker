@@ -1,21 +1,20 @@
 :root {
-  --bg-color: #08090a;
-  --surface-bg: #121318;
-  /*--card-border: rgba(255, 255, 255, 0.08);*/
+  --bg-primary: #08090a;
+  --bg-secondary: #121318;
   --text-primary: #ffffff;
   --text-secondary: #87888c;
-  --accent-color: #ffffff;
+  --accent: #ffffff;
   --radius-lg: 8px;
   --radius-md: 6px;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg-color: #ffffff;
-    --surface-bg: #eee;
+    --bg-primary: #ffffff;
+    --bg-secondary: #eee;
     --text-primary: #08090a;
     --text-secondary: #333;
-    --accent-color: #000;
+    --accent: #000;
   }
 }
 
@@ -26,7 +25,7 @@
 }
 
 body {
-  background-color: var(--bg-color);
+  background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
   letter-spacing: -0.02em;
@@ -36,12 +35,12 @@ body {
 }
 
 .surface {
-  background: var(--surface-bg);
+  background: var(--bg-secondary);
   border: 1px solid var(--card-border);
 }
 
 .accent-text {
-  color: var(--text-primary);
+  color: var(--accent);
 }
 
 .main-content {
@@ -60,7 +59,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  /*background: var(--surface-bg);*/
+  background: var(--bg-secondary);
   border: 1px solid var(--card-border);
 }
 
@@ -205,7 +204,7 @@ body {
 }
 
 .input-field {
-  background: #08090a;
+  background: var(--bg-primary);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-md);
   padding: 0.6rem 0.8rem;

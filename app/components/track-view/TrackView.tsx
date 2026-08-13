@@ -3,6 +3,8 @@ import { cleanYouTubeTitle } from '../../lib/youtube/titleParser';
 import { headers } from 'next/headers';
 import { detectCountryFromHeaders } from '../../lib/geo';
 import { resolveEntity } from '../../lib/urlResolver';
+import { getBestAlbumArt } from '../../lib/albumArt';
+import { getPaletteFromImage, ThemeColors } from '../../lib/palette';
 import LinkButtons from '../LinkButtons';
 import YouTubeSection from './YouTubeSection';
 import AppleSection from './AppleSection';
@@ -103,8 +105,25 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
   const displaySecondary = parsed ? parsed.secondary : (a || null);
   const displayYear = parsed?.year || null;
 
+  // Attempt to fetch palette
+  let theme: ThemeColors | null = null;
+  try {
+    // In a real app, we'd probably want this to be part of the resolveEntity result
+    // or cached separately. For now we just call it.
+    const albumArt = getBestAlbumArt({
+      appleMusicUrl: ctx.cached.apple_music?.url,
+      spotifyUrl: ctx.cached.spotify?.url,
+      youtubeUrl: ctx.cached.youtube?.url,
+    });
+    if (albumArt) {
+      theme = await getPaletteFromImage(albumArt);
+    }
+  } catch (e) {
+    console.error('Failed to get palette:', e);
+  }
+
   return (
-    <div className="main-content">
+    <div className="main-content" style={theme as React.CSSProperties}>
       <div className="track-card">
         <header className="track-header">
           <div className="badge">{ctx.isAlbum ? 'Album Link' : 'Track Link'}</div>
