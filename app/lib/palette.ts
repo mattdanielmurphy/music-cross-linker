@@ -10,35 +10,60 @@ import sharp from 'sharp';
 export async function getPaletteFromImage(imageUrl: string): Promise<ThemeColors> {
   try {
     const response = await fetch(imageUrl);
-    const buffer = Buffer.from(await response.arrayBuffer());
-    
-    // Resize to a small image to get prominent colors
-    const stats = await sharp(buffer)
-      .resize(10, 10)
+    const buffer = await response.arrayBuffer();
+    let image = sharp(Buffer.from(buffer));
+    const metadata = await image.metadata();
+
+    if (imageUrl.includes('youtube.com') || imageUrl.includes('ytimg.com')) {
+      const { width, height } = metadata;
+      if (width && height) {
+        image = image.extract({
+          left: Math.floor(width * 0.25),
+          top: Math.floor(height * 0.1),
+          width: Math.floor(width * 0.5),
+          height: Math.floor(height * 0.8),
+        });
+      }
+    }
+
+    const pixels = await image
+      .resize(20, 20)
       .raw()
+      .ensureAlpha()
       .toBuffer();
 
-    // Simple dominant color extraction (averaging colors)
-    let r = 0, g = 0, b = 0;
-    for (let i = 0; i < stats.length; i += 3) {
-      r += stats[i];
-      g += stats[i + 1];
-      b += stats[i + 2];
+    const colors: { r: number; g: number; b: number }[] = [];
+    for (let i = 0; i < pixels.length; i += 4) {
+      const r = pixels[i];
+      const g = pixels[i + 1];
+      const b = pixels[i + 2];
+      
+      const isTooDark = (r + g + b < 40) || (r < 25 && g < 25 && b < 25);
+      const isTooLight = (r > 230 && g > 230 && b > 230);
+      
+      if (!isTooDark && !isTooLight) {
+        colors.push({ r, g, b });
+      }
     }
-    const count = stats.length / 3;
-    const avg = { r: Math.round(r / count), g: Math.round(g / count), b: Math.round(b / count) };
 
-    const brightness = (avg.r * 299 + avg.g * 587 + avg.b * 114) / 1000;
-    const isDark = brightness < 128;
+    if (colors.length === 0) {
+      return {
+        '--bg-gradient': 'linear-gradient(135deg, #2c3e50, #000000)',
+        '--text-primary': 'rgba(255, 255, 255, 0.95)',
+        '--text-secondary': 'rgba(255, 255, 255, 0.7)',
+        '--card-bg': 'rgba(0, 0, 0, 0.4)',
+      };
+    }
 
-    const color1 = `rgb(${avg.r}, ${avg.g}, ${avg.b})`;
-    const color2 = `rgb(${Math.max(0, avg.r - 50)}, ${Math.max(0, avg.g - 50)}, ${Math.max(0, avg.b - 50)})`;
+    // Simple sampling
+    const sample = colors.filter((_, i) => i % Math.max(1, Math.floor(colors.length / 3)) === 0).slice(0, 3);
+    const colorStops = sample.map(c => `rgb(${c.r}, ${c.g}, ${c.b})`).join(', ');
 
     return {
-      '--bg-gradient': `linear-gradient(135deg, ${color1}, ${color2})`,
-      '--text-primary': isDark ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.95)',
-      '--text-secondary': isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
-      '--card-bg': isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+      '--bg-gradient': `linear-gradient(135deg, ${colorStops})`,
+      '--text-primary': 'rgba(255, 255, 255, 0.95)',
+      '--text-secondary': 'rgba(255, 255, 255, 0.7)',
+      '--card-bg': 'rgba(255, 255, 255, 0.05)',
     };
   } catch (e) {
     console.error('Palette extraction failed', e);

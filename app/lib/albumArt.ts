@@ -10,7 +10,7 @@ export function getBestAlbumArt(options: AlbumArtOptions): string | null {
     return options.appleMusicUrl.replace('{w}x{h}bb', '1000x1000bb');
   }
 
-  // 2. Spotify: Usually provides a list of images, assume the first/largest is passed or handled elsewhere
+  // 2. Spotify: Usually provides a list of images
   if (options.spotifyUrl) {
     return options.spotifyUrl;
   }
