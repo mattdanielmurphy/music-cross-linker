@@ -27,7 +27,8 @@ function normalizeForMatch(s: string | null | undefined): string {
     .replace(/[\(\[\{].*?[\)\]\}]/g, ' ') // strip parenthetical/bracketed content
     .replace(/(?<=\d)\s*[\-–—]\s*(?=\d)/g, '-') // preserve hyphenated number ranges e.g. 85-92
     .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+    .trim()
+    .replace(/^(the|a|an)\s+/i, '');
 }
 
 /** Mirrors the Postgres generated `fingerprint` column on resolved_entities:

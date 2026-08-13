@@ -28,8 +28,19 @@ def _normalize(s: str) -> str:
     s = re.sub(r"[\(\[\{].*?[\)\]\}]", "", s)  # strip parenthetical/bracketed content
     s = _EDITION_SUFFIX_RE.sub("", s)  # strip dash-suffixed edition descriptors
     s = re.sub(r"(?<=\d)\s*[\-–—]\s*(?=\d)", "-", s)  # preserve hyphenated number ranges e.g. 85-92
-    s = re.sub(r"[^a-z0-9]+", " ", s)  # strip punctuation
+    s = re.sub(r"[^a-z0-9]+", " ", s).strip()  # strip punctuation
+    s = re.sub(r"^(the|a|an)\s+", "", s)  # strip leading articles
     return s.strip()
+
+def _normalize_with_articles(s: str) -> str:
+    if not s:
+        return ""
+    s = s.lower()
+    s = re.sub(r"[\(\[\{].*?[\)\]\}]", "", s)
+    s = _EDITION_SUFFIX_RE.sub("", s)
+    s = re.sub(r"(?<=\d)\s*[\-–—]\s*(?=\d)", "-", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s).strip()
+    return s
 
 
 def _extract_id(item: dict) -> str | None:
@@ -48,19 +59,6 @@ def _spotify_artist_names(data: dict) -> list[str]:
 
 
 def _classify_match(name_raw: str, artist_names_raw: list[str], norm_title: str, norm_artist: str) -> tuple[str, float]:
-    """Classify a candidate as 'high' / 'low' / 'none' confidence, plus a
-    tie-breaking score usable within a tier (higher is better).
-
-    - 'high': title matches exactly (normalized) and artist matches (or no
-      artist was given to check against).
-    - 'low':  plausible but not exact — e.g. same artist but a different
-      edition/title ("Belladonna" vs "Belladonna Nocturne"), or an exact
-      title match with an unconfirmed/different artist. Still shown to the
-      user, but should be flagged as possibly wrong.
-    - 'none': no meaningful relationship — e.g. a completely different
-      artist AND a title that only coincidentally shares a common word
-      (Queen's "We Will Rock You" for Tiny Tim's album "Rock"). Never shown.
-    """
     name = _normalize(name_raw)
     artist_names = [_normalize(a) for a in artist_names_raw]
 
@@ -69,9 +67,6 @@ def _classify_match(name_raw: str, artist_names_raw: list[str], norm_title: str,
 
     title_word_match = False
     if norm_title and not title_is_single_word:
-        # Whole-phrase containment (word-boundary), so multi-word titles like
-        # "Belladonna Nocturne" still count as containing "Belladonna", but a
-        # single common word ("Rock") doesn't trivially match anything.
         pattern = re.compile(rf"\b{re.escape(norm_title)}\b")
         title_word_match = bool(pattern.search(name))
 
@@ -80,31 +75,27 @@ def _classify_match(name_raw: str, artist_names_raw: list[str], norm_title: str,
         artist_match = norm_artist in artist_names or any(
             norm_artist in a or a in norm_artist for a in artist_names
         )
-    artist_unknown = not norm_artist  # no artist provided to check against
+    artist_unknown = not norm_artist
 
     similarity = difflib.SequenceMatcher(
         None, f"{norm_artist} {norm_title}".strip(), f"{name} {' '.join(artist_names)}".strip()
     ).ratio()
 
-    # Tie-break signal within a tier: normalization deliberately collapses a
-    # plain title and its reissue/edition variants ("Fragile" vs "Fragile
-    # (Super Deluxe)") onto the same normalized string so both can qualify as
-    # 'high', but we still want the plainer release to be *preferred* when
-    # both exist. Penalize by how much raw text got stripped during
-    # normalization (parens/edition suffixes) — small enough to never cross
-    # into a different tier's score range, but enough to break ties toward
-    # the plainer title.
+    # Exact match bonus if the leading article also matches verbatim
+    article_bonus = 0.0
+    if title_exact:
+        if _normalize_with_articles(name_raw) == _normalize_with_articles(norm_title):
+            article_bonus = 2.0
+
     edition_penalty = min(len(name_raw) - len(name), 60) * 0.05
 
     if title_exact and (artist_match or artist_unknown):
-        return "high", 100 + similarity * 10 - edition_penalty
+        return "high", 100 + article_bonus + similarity * 10 - edition_penalty
     if (title_exact or title_word_match) and artist_match:
-        return "low", 50 + similarity * 10 - edition_penalty
+        return "low", 50 + article_bonus + similarity * 10 - edition_penalty
     if title_exact and not artist_unknown and not artist_match:
-        # Right title, but artist doesn't match — could be a cover; low confidence.
-        return "low", 40 + similarity * 10 - edition_penalty
+        return "low", 40 + article_bonus + similarity * 10 - edition_penalty
     if artist_match and similarity > 0.35:
-        # Same artist, loosely related title (different edition/live/etc).
         return "low", 20 + similarity * 10 - edition_penalty
 
     return "none", 0
