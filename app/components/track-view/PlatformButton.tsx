@@ -73,7 +73,7 @@ export default function PlatformButton({
       </a>
       {currentMatchedBy === 'manual' && (
         <div style={{ fontSize: '0.8em', color: 'green', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <IconCheck size={14} /> Matched by Matt
+          <IconCheck size={14} /> Matched by a human
         </div>
       )}
       {currentMatchedBy === 'manual' && currentUncertain && (

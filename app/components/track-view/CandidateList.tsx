@@ -95,7 +95,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
   };
 
   return (
-    <div style={{ marginTop: '10px' }}>
+    <div style={{ marginTop: '10px', background: 'var(--surface-bg)', border: '1px solid var(--card-border)', borderRadius: 'var(--radius-lg)', padding: '14px', color: 'var(--text-primary)' }}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         style={{ 
@@ -114,7 +114,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
       </button>
 
       {isOpen && (
-        <div style={{ marginTop: '10px', padding: '14px', background: '#121318', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)' }}>
+        <div style={{ marginTop: '10px' }}>
           <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9em', fontWeight: 600 }}>Select better match:</h4>
 
           <form onSubmit={(e) => runSearch(e)} style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
@@ -123,9 +123,9 @@ export default function CandidateList({ platform, candidates, entityId, currentU
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Paste URL or search..."
-              style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.15)', color: '#fff', backgroundColor: 'rgba(0, 0, 0, 0.4)', outline: 'none' }}
+              style={{ flex: 1, padding: '8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--input-border)', color: 'var(--text-primary)', backgroundColor: 'var(--input-bg)', outline: 'none' }}
             />
-            <button type="submit" disabled={loading} style={{ padding: '8px 12px', cursor: 'pointer', background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.15)', color: '#fff', borderRadius: '6px' }}>
+            <button type="submit" disabled={loading} style={{ padding: '8px 12px', cursor: 'pointer', background: 'var(--btn-secondary-bg)', border: '1px solid var(--btn-secondary-border)', color: 'var(--text-primary)', borderRadius: 'var(--radius-md)' }}>
               {loading ? '...' : <IconSearch size={18} />}
             </button>
           </form>
@@ -155,7 +155,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
               <button
                 onClick={loadMore}
                 disabled={loading}
-                style={{ width: '100%', padding: '10px', marginTop: '4px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontWeight: 500 }}
+                style={{ width: '100%', padding: '10px', marginTop: '4px', background: 'var(--btn-secondary-bg)', border: '1px solid var(--btn-secondary-border)', borderRadius: 'var(--radius-md)', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}
               >
                 {loading ? 'Loading...' : 'Load More Results'}
               </button>

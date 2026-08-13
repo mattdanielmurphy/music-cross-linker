@@ -18,11 +18,11 @@ export default function MatchCard({ candidate, onSelect, isSelected }: any) {
         alignItems: 'center', 
         gap: '12px', 
         padding: '10px 12px', 
-        border: isSelected ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)', 
-        borderRadius: '8px', 
+        border: isSelected ? '1px solid var(--accent-color)' : '1px solid var(--card-border)', 
+        borderRadius: 'var(--radius-md)', 
         cursor: 'pointer', 
         marginBottom: '8px', 
-        background: isSelected ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+        background: isSelected ? 'var(--card-item-selected-bg)' : 'var(--card-item-bg)',
         transition: 'all 0.15s ease'
       }}
     >

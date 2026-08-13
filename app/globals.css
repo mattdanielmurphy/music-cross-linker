@@ -1,9 +1,15 @@
 :root {
   --bg-color: #08090a;
   --surface-bg: #121318;
-  /*--card-border: rgba(255, 255, 255, 0.08);*/
+  --card-border: rgba(255, 255, 255, 0.1);
   --text-primary: #ffffff;
   --text-secondary: #87888c;
+  --input-bg: rgba(0, 0, 0, 0.4);
+  --input-border: rgba(255, 255, 255, 0.15);
+  --btn-secondary-bg: rgba(255, 255, 255, 0.08);
+  --btn-secondary-border: rgba(255, 255, 255, 0.12);
+  --card-item-bg: rgba(255, 255, 255, 0.04);
+  --card-item-selected-bg: rgba(255, 255, 255, 0.12);
   --accent-color: #ffffff;
   --radius-lg: 8px;
   --radius-md: 6px;
@@ -12,10 +18,17 @@
 @media (prefers-color-scheme: light) {
   :root {
     --bg-color: #ffffff;
-    --surface-bg: #eee;
+    --surface-bg: #f4f4f6;
+    --card-border: rgba(0, 0, 0, 0.1);
     --text-primary: #08090a;
-    --text-secondary: #333;
-    --accent-color: #000;
+    --text-secondary: #55555d;
+    --input-bg: #ffffff;
+    --input-border: rgba(0, 0, 0, 0.2);
+    --btn-secondary-bg: rgba(0, 0, 0, 0.05);
+    --btn-secondary-border: rgba(0, 0, 0, 0.12);
+    --card-item-bg: #ffffff;
+    --card-item-selected-bg: rgba(0, 0, 0, 0.08);
+    --accent-color: #000000;
   }
 }
 
