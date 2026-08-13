@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { cleanYouTubeTitle } from '../../lib/youtube/titleParser';
 import { headers } from 'next/headers';
 import { detectCountryFromHeaders } from '../../lib/geo';
 import { resolveEntity } from '../../lib/urlResolver';
@@ -108,7 +109,7 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
         <header className="track-header">
           <div className="badge">{ctx.isAlbum ? 'Album Link' : 'Track Link'}</div>
           <h1 className="track-title accent-text">
-            {displayPrimary}
+            {cleanYouTubeTitle(displayPrimary)}
             {displayYear && <span className="year-chip">{displayYear}</span>}
           </h1>
           {displaySecondary && <h2 className="track-artist">{displaySecondary}</h2>}

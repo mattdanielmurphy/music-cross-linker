@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchOdesliByUrl } from '../../lib/odesli';
+import { cleanYouTubeTitle, parseYouTubeTitle } from '../../lib/youtube/titleParser';
 import { getSlugForUrl } from '../../lib/slugStore';
 
-/** Split a YouTube video title like "Daniel Lanois - Belladonna (2005)" into
- *  { artist: 'Daniel Lanois', title: 'Belladonna' }. Returns null if no
- *  recognizable "Artist - Title" pattern is present. */
-function parseArtistTitleFromVideoTitle(videoTitle: string): { artist: string; title: string } | null {
-  const seps = [' - ', ' \u2013 ', ' \u2014 ', ' | ', ': ', ' ~ '];
-  for (const sep of seps) {
-    const idx = videoTitle.indexOf(sep);
-    if (idx > 0) {
-      const left = videoTitle.slice(0, idx).trim();
-      let right = videoTitle.slice(idx + sep.length).trim();
-      right = right
-        .replace(/\s*[\(\[][^)\]]*[\)\]]\s*$/, '')
-        .replace(/\s*(feat\.?.*|ft\.?.*|remaster(ed)?|official.*|full album.*|audio.*|video.*|lyrics?)\s*$/i, '')
-        .trim();
-      if (left && right) return { artist: left, title: right };
-    }
-  }
-  return null;
-}
 
 /**
  * Resolves an external media link (YouTube/Spotify/Apple Music/etc.) to a
@@ -51,9 +33,13 @@ export async function POST(req: NextRequest) {
         rawVideoTitle = oembed?.title || null;
       } catch {}
 
-      const parsed = parseArtistTitleFromVideoTitle(rawVideoTitle || title);
-      if (parsed) {
-        artistName = parsed.artist;
+      if (rawVideoTitle) {
+        const parsed = parseYouTubeTitle(rawVideoTitle);
+        if (parsed.artist) artistName = parsed.artist;
+        title = parsed.title;
+      } else if (title) {
+        const parsed = parseYouTubeTitle(title);
+        if (parsed.artist) artistName = parsed.artist;
         title = parsed.title;
       }
     }
@@ -63,6 +49,22 @@ export async function POST(req: NextRequest) {
   }
 
   if (videoId) {
+    let rawVideoTitle: string | null = null;
+    try {
+      const oembed = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
+      ).then((r) => (r.ok ? r.json() : null));
+      rawVideoTitle = oembed?.title || null;
+    } catch {}
+
+    if (rawVideoTitle) {
+      const parsed = parseYouTubeTitle(rawVideoTitle);
+      const artistName = parsed.artist || '';
+      const title = parsed.title;
+      const slug = getSlugForUrl(lookupUrl, title, artistName, videoId);
+      return NextResponse.json({ slug });
+    }
+
     const slug = getSlugForUrl(lookupUrl, videoId, '', videoId);
     return NextResponse.json({ slug });
   }
