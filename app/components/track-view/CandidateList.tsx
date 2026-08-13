@@ -77,7 +77,9 @@ export default function CandidateList({ platform, candidates, entityId, currentU
     try {
       const res = await fetch(`/api/entities/${entityId}/search?platform=${platform}&query=${encodeURIComponent(trimmed)}&limit=${currentLimit}`);
       const data = await res.json();
-      setResults(data.candidates || []);
+      if (data.candidates && data.candidates.length > 0) {
+        setResults(data.candidates);
+      }
       setSearched(true);
       if (currentLimit !== limit) setLimit(currentLimit);
     } catch (e) {

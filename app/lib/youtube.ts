@@ -21,32 +21,31 @@ export async function searchYouTubeVideos(
   const candidates: YouTubeVideoCandidate[] = [];
   const seenIds = new Set<string>();
 
-  const videoMatches = Array.from(
-    html.matchAll(/"videoRenderer"\s*:\s*(\{[\s\S]*?\})(?=,\s*"videoRenderer"|,\s*"compactVideoRenderer"|,\s*"continuationItemRenderer"|\]\}\}\}\})/g)
-  );
+  // Extract all videoRenderer JSON blocks or videoId matches
+  const videoIdMatches = Array.from(html.matchAll(/"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/g));
 
-  for (const match of videoMatches) {
-    const block = match[1];
-    const videoIdMatch = block.match(/"videoId"\s*:\s*"(.*?)"/);
-    const titleMatch = block.match(
-      /"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"(.*?)"/
-    );
+  for (const match of videoIdMatches) {
+    const id = match[1];
+    if (seenIds.has(id)) continue;
+
+    // Find the slice of HTML around this videoId to get title and channel name
+    const idx = match.index || 0;
+    const block = html.slice(idx, idx + 2500);
+
+    const titleMatch = block.match(/"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"(.*?)"/);
     const channelMatch = block.match(/"longBylineText":[\s\S]*?"text":"(.*?)"/);
 
-    if (videoIdMatch && videoIdMatch[1]) {
-      const id = videoIdMatch[1];
-      const videoTitle = titleMatch ? titleMatch[1].replace(/\\"/g, '"') : 'YouTube Video';
-      const channel = channelMatch ? channelMatch[1] : undefined;
-      const thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+    const videoTitle = titleMatch ? titleMatch[1].replace(/\\"/g, '"').replace(/\\u0026/g, '&') : 'YouTube Video';
+    const channel = channelMatch ? channelMatch[1] : undefined;
+    const thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 
-      if (!seenIds.has(id)) {
-        seenIds.add(id);
-        candidates.push({ id, title: videoTitle, channel, thumbnail });
-      }
-    }
+    seenIds.add(id);
+    candidates.push({ id, title: videoTitle, channel, thumbnail });
+
+    if (candidates.length >= limit) break;
   }
 
-  return candidates.slice(0, limit);
+  return candidates;
 }
 
 export async function getTopVideos(
