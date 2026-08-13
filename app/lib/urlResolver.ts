@@ -1,6 +1,7 @@
 import sql from './db';
 import * as cheerio from 'cheerio';
 import { cleanYouTubeTitle, parseYouTubeTitle } from './youtube/titleParser';
+import { resolveArtworkImage } from './artwork';
 
 // ---------------------------------------------------------------------------
 // Shared match confidence classification.
@@ -340,13 +341,13 @@ export async function resolveEntity(
   // the correct fingerprint inline in the query instead.
   if (!entityId && fingerprint) {
     const byFingerprint = await sql`
-      SELECT id, artwork_url FROM resolved_entities
+      SELECT id FROM resolved_entities
       WHERE regexp_replace(lower(coalesce(artist,'')||'|'||coalesce(title,'')), '[^a-z0-9|]', '', 'g') = ${fingerprint}
       ORDER BY created_at ASC LIMIT 1
     `;
     if (byFingerprint[0]?.id) {
       entityId = byFingerprint[0].id;
-      artworkUrl = byFingerprint[0].artwork_url;
+      artworkUrl = await resolveArtworkImage(cleanArtist || '', cleanTitle || '', sourceUrl);
     }
   }
 
