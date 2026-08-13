@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import sql from '@/app/lib/db';
+import { searchYouTubeVideos } from '@/app/lib/youtube';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -52,6 +53,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         } catch (e) {
           console.error('SpotAPI candidate search failed:', e);
         }
+      }
+    } else if (platform === 'youtube') {
+      const youtubeResults = await searchYouTubeVideos(query, limit);
+      if (youtubeResults && youtubeResults.length > 0) {
+        const rows = youtubeResults.map((v: any, i: number) => ({
+          entity_id: entityId,
+          platform: 'youtube',
+          candidate_url: `https://www.youtube.com/watch?v=${v.id}`,
+          title: v.title,
+          artist: v.channel,
+          thumbnail_url: v.thumbnail,
+          rank: i + 1,
+          source: 'manual_search',
+        }));
+        const inserted = await sql`INSERT INTO match_candidates ${sql(rows)} RETURNING *`;
+        candidates.push(...inserted);
       }
     } else if (platform === 'apple_music') {
       const itunesSearch = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song,album&limit=${limit}`)

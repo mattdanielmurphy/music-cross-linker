@@ -63,7 +63,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
     setLoading(false);
   };
 
-  const runSearch = async (e?: React.FormEvent, currentLimit: number = 10) => {
+  const runSearch = async (e?: React.FormEvent, currentLimit: number = limit) => {
     if (e) e.preventDefault();
     const trimmed = query.trim();
     if (!trimmed) return;
@@ -79,6 +79,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
       const data = await res.json();
       setResults(data.candidates || []);
       setSearched(true);
+      if (currentLimit !== limit) setLimit(currentLimit);
     } catch (e) {
       console.error(e);
     }
