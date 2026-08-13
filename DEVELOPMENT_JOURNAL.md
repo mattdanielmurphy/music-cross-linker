@@ -16,3 +16,4 @@
 2026-07-29: Integrated Odesli API for reliable cross-platform music entity resolution, ensuring 100% accuracy in link generation and platform mapping.
 
 - Fixed Vercel deployment crash by resolving read-only filesystem error in slugStore and preserving Apple Music query params in route resolver.
+- August 12, 2026 - YouTube Title Cleanup & Hybrid AI Parsing: Implemented YouTube title cleaner (HTML entity decoding, noise tag stripping, depth-aware bracket repair for trailing parens like 'Physical Graffiti (', CJK bracket normalization) and progressive enhancement for Chrome Built-in AI (Prompt API window.ai) with fallback.
