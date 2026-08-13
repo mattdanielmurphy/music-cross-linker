@@ -96,14 +96,24 @@ export default function CandidateList({ platform, candidates, entityId, currentU
     <div style={{ marginTop: '10px' }}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '0.85em', textDecoration: 'underline' }}
+        style={{ 
+          background: 'none', 
+          border: 'none', 
+          color: 'var(--text-secondary)', 
+          cursor: 'pointer', 
+          fontSize: '0.85em', 
+          textDecoration: 'underline',
+          transition: 'color 0.2s ease'
+        }}
+        onMouseOver={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+        onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
       >
         {isOpen ? 'Close' : isNoMatch ? 'See search results' : 'Not Right?'}
       </button>
 
       {isOpen && (
-        <div style={{ marginTop: '10px', padding: '10px', background: '#f9f9f9', borderRadius: '8px', color: '#000' }}>
-          <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9em' }}>Select better match:</h4>
+        <div style={{ marginTop: '10px', padding: '14px', background: '#121318', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)' }}>
+          <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9em', fontWeight: 600 }}>Select better match:</h4>
 
           <form onSubmit={(e) => runSearch(e)} style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
             <input
@@ -111,14 +121,14 @@ export default function CandidateList({ platform, candidates, entityId, currentU
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Paste URL or search..."
-              style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #ccc', color: '#000', backgroundColor: '#fff' }}
+              style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.15)', color: '#fff', backgroundColor: 'rgba(0, 0, 0, 0.4)', outline: 'none' }}
             />
-            <button type="submit" disabled={loading} style={{ padding: '8px 12px', cursor: 'pointer' }}>
+            <button type="submit" disabled={loading} style={{ padding: '8px 12px', cursor: 'pointer', background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.15)', color: '#fff', borderRadius: '6px' }}>
               {loading ? '...' : <IconSearch size={18} />}
             </button>
           </form>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85em', color: '#444', marginBottom: '12px', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85em', color: 'var(--text-secondary)', marginBottom: '12px', cursor: 'pointer' }}>
             <input type="checkbox" checked={uncertain} onChange={(e) => setUncertain(e.target.checked)} />
             This isn&apos;t right, but it&apos;s the closest available
           </label>
@@ -143,7 +153,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
               <button
                 onClick={loadMore}
                 disabled={loading}
-                style={{ width: '100%', padding: '10px', marginTop: '4px', background: '#eee', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#000' }}
+                style={{ width: '100%', padding: '10px', marginTop: '4px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontWeight: 500 }}
               >
                 {loading ? 'Loading...' : 'Load More Results'}
               </button>

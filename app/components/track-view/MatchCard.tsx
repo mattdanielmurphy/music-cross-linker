@@ -13,16 +13,27 @@ export default function MatchCard({ candidate, onSelect, isSelected }: any) {
     <div 
       className={`match-card ${isSelected ? 'selected' : ''}`}
       onClick={() => onSelect(candidate)}
-      style={{ display: 'flex', gap: '10px', padding: '10px', border: '1px solid #ccc', borderRadius: '8px', cursor: 'pointer', marginBottom: '8px', background: isSelected ? '#f0f8ff' : '#fff' }}
+      style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '12px', 
+        padding: '10px 12px', 
+        border: isSelected ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)', 
+        borderRadius: '8px', 
+        cursor: 'pointer', 
+        marginBottom: '8px', 
+        background: isSelected ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+        transition: 'all 0.15s ease'
+      }}
     >
       {candidate.thumbnail_url && (
-        <img src={candidate.thumbnail_url} alt={candidate.title} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '4px' }} />
+        <img src={candidate.thumbnail_url} alt={candidate.title} style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '6px' }} />
       )}
-      <div style={{ flex: 1, color: '#000' }}>
-        <div style={{ fontWeight: 'bold' }}>{cleanTitle(candidate.title) || 'Unknown Title'}</div>
-        <div style={{ fontSize: '0.85em', color: '#666' }}>{candidate.artist || candidate.platform}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{cleanTitle(candidate.title) || 'Unknown Title'}</div>
+        <div style={{ fontSize: '0.85em', color: 'var(--text-secondary)' }}>{candidate.artist || candidate.platform}</div>
       </div>
-      {isSelected && <IconCheck color="green" />}
+      {isSelected && <IconCheck size={18} color="#1db954" />}
     </div>
   );
 }
