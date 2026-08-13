@@ -1,20 +1,21 @@
 :root {
-  --bg-primary: #08090a;
-  --bg-secondary: #121318;
+  --bg-color: #08090a;
+  --surface-bg: #121318;
+  /*--card-border: rgba(255, 255, 255, 0.08);*/
   --text-primary: #ffffff;
   --text-secondary: #87888c;
-  --accent: #ffffff;
+  --accent-color: #ffffff;
   --radius-lg: 8px;
   --radius-md: 6px;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg-primary: #ffffff;
-    --bg-secondary: #eee;
+    --bg-color: #ffffff;
+    --surface-bg: #eee;
     --text-primary: #08090a;
     --text-secondary: #333;
-    --accent: #000;
+    --accent-color: #000;
   }
 }
 
@@ -25,8 +26,8 @@
 }
 
 body {
-  background: var(--bg-gradient, #08090a);
-  color: var(--text-primary, #fff);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
   letter-spacing: -0.02em;
   min-height: 100vh;
@@ -35,12 +36,12 @@ body {
 }
 
 .surface {
-  background: var(--bg-secondary);
+  background: var(--surface-bg);
   border: 1px solid var(--card-border);
 }
 
 .accent-text {
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .main-content {
@@ -59,9 +60,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  background: var(--card-bg, rgba(255, 255, 255, 0.1));
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  /*background: var(--surface-bg);*/
+  border: 1px solid var(--card-border);
 }
 
 .track-header {
@@ -85,13 +85,12 @@ body {
   font-weight: 800;
   line-height: 1.2;
   margin-bottom: 0.35rem;
-  color: var(--text-primary);
 }
 
 .track-artist {
   font-size: 2rem;
   font-weight: 400;
-  color: var(--text-secondary);
+  /*color: var(--text-secondary);*/
   margin: 0;
   margin-top: 0.15rem;
 }
@@ -206,7 +205,7 @@ body {
 }
 
 .input-field {
-  background: var(--bg-primary);
+  background: #08090a;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-md);
   padding: 0.6rem 0.8rem;
@@ -285,14 +284,15 @@ body {
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease;
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.1);
   box-sizing: border-box;
 }
 
 .btn-link.spotify {
-  border-color: rgba(29, 185, 84, 0.3);
+  /*background: rgba(29, 185, 84, 0.15);*/
+  border-color: rgba(29, 185, 84, 0.5);
+  color: #1db954;
 }
 
 .btn-link.spotify:hover {
@@ -303,7 +303,9 @@ body {
 }
 
 .btn-link.apple {
-  border-color: rgba(252, 60, 68, 0.3);
+  /*background: rgba(252, 60, 68, 0.15);*/
+  border-color: rgba(252, 60, 68, 0.5);
+  color: #fc3c44;
 }
 
 .btn-link.apple:hover {

@@ -1,7 +1,6 @@
 import sql from './db';
 import * as cheerio from 'cheerio';
 import { cleanYouTubeTitle, parseYouTubeTitle } from './youtube/titleParser';
-import { resolveArtworkImage } from './artwork';
 
 // ---------------------------------------------------------------------------
 // Shared match confidence classification.
@@ -264,7 +263,6 @@ export interface EntityContext {
   cleanArtist: string;
   cleanTitle: string;
   searchTerm: string;
-  artworkUrl?: string | null;
   /** Matches already known for this entity (from a previous resolution), keyed by platform. */
   cached: Partial<Record<Platform, CachedMatch>>;
 }
@@ -317,7 +315,6 @@ export async function resolveEntity(
   const fingerprint = fingerprintFor(cleanArtist, cleanTitle);
 
   let entityId: string | null = null;
-  let artworkUrl: string | null = null;
   const cached: Partial<Record<Platform, CachedMatch>> = {};
 
   // 1. Try to find a matching URL directly among previously cached candidates —
@@ -345,10 +342,7 @@ export async function resolveEntity(
       WHERE regexp_replace(lower(coalesce(artist,'')||'|'||coalesce(title,'')), '[^a-z0-9|]', '', 'g') = ${fingerprint}
       ORDER BY created_at ASC LIMIT 1
     `;
-    if (byFingerprint[0]?.id) {
-      entityId = byFingerprint[0].id;
-      artworkUrl = await resolveArtworkImage(cleanArtist || '', cleanTitle || '', sourceUrl);
-    }
+    if (byFingerprint[0]?.id) entityId = byFingerprint[0].id;
   }
 
   if (entityId) {
@@ -375,7 +369,7 @@ export async function resolveEntity(
     entityId = inserted[0].id;
   }
 
-  return { entityId: entityId as string, isAlbum, country: countryCode, sourcePlatform, cleanArtist, cleanTitle, searchTerm, cached, artworkUrl };
+  return { entityId: entityId as string, isAlbum, country: countryCode, sourcePlatform, cleanArtist, cleanTitle, searchTerm, cached };
 }
 
 /** Persist the auto-picked match for a platform, without clobbering a manual override. */

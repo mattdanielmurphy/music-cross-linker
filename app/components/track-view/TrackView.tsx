@@ -3,8 +3,6 @@ import { cleanYouTubeTitle } from '../../lib/youtube/titleParser';
 import { headers } from 'next/headers';
 import { detectCountryFromHeaders } from '../../lib/geo';
 import { resolveEntity } from '../../lib/urlResolver';
-import { resolveArtworkImage } from '../../lib/artwork';
-import { getPaletteFromImage, ThemeColors } from '../../lib/palette';
 import LinkButtons from '../LinkButtons';
 import YouTubeSection from './YouTubeSection';
 import AppleSection from './AppleSection';
@@ -96,7 +94,6 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
       cleanTitle: t,
       searchTerm: a ? `${a} ${t}` : t,
       cached: {},
-      artworkUrl: null,
     };
   }
 
@@ -106,25 +103,12 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
   const displaySecondary = parsed ? parsed.secondary : (a || null);
   const displayYear = parsed?.year || null;
 
-  // Resolve artwork
-  const artworkUrl = ctx.artworkUrl || await resolveArtworkImage(a, t, sourceUrl);
-
-  // Attempt to fetch palette
-  let theme: ThemeColors | null = null;
-  try {
-    if (artworkUrl) {
-      theme = await getPaletteFromImage(artworkUrl);
-    }
-  } catch (e) {
-    console.error('Failed to get palette:', e);
-  }
-
   return (
-    <div className="main-content" style={theme as React.CSSProperties}>
+    <div className="main-content">
       <div className="track-card">
         <header className="track-header">
           <div className="badge">{ctx.isAlbum ? 'Album Link' : 'Track Link'}</div>
-          <h1 className="track-title">
+          <h1 className="track-title accent-text">
             {cleanYouTubeTitle(displayPrimary)}
             {displayYear && <span className="year-chip">{displayYear}</span>}
           </h1>
