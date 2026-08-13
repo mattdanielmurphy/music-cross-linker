@@ -483,20 +483,20 @@ body {
 
 .global-url-tip-footer {
   text-align: center;
-  padding: 2rem 1.5rem;
-  /*background: rgba(255, 255, 255, 0.03);*/
+  padding: 1.5rem 1.5rem 2rem 1.5rem;
   border-top: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
   font-size: 0.85rem;
   color: var(--text-secondary);
   margin-top: auto;
+  line-height: 1.6;
 }
 
 .global-url-tip-footer code {
-  background: rgba(255, 255, 255, 0.01);
+  background: rgba(255, 255, 255, 0.06);
   padding: 0.15rem 0.35rem;
   border-radius: 4px;
   font-family: monospace;
-  color: var(--text-secondary);
+  color: #bbb;
 }
 
 .search-results-grid {
