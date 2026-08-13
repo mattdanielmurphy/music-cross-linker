@@ -376,10 +376,10 @@ export async function resolveEntity(
 /** Persist the auto-picked match for a platform, without clobbering a manual override. */
 async function saveAutoMatch(entityId: string, platform: Platform, url: string, candidateId?: string | null) {
   await sql`
-    INSERT INTO entity_matches (entity_id, platform, matched_url, matched_by, candidate_id, updated_at)
-    VALUES (${entityId}, ${platform}, ${url}, 'auto', ${candidateId || null}, now())
+    INSERT INTO entity_matches (entity_id, platform, matched_url, matched_by, candidate_id, updated_at, uncertain)
+    VALUES (${entityId}, ${platform}, ${url}, 'auto', ${candidateId || null}, now(), false)
     ON CONFLICT (entity_id, platform) DO UPDATE
-      SET matched_url = EXCLUDED.matched_url, candidate_id = EXCLUDED.candidate_id, updated_at = now()
+      SET matched_url = EXCLUDED.matched_url, candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
       WHERE entity_matches.matched_by <> 'manual'
   `;
 }
@@ -408,15 +408,20 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
       `;
       candidateId = inserted[0].id;
     }
-    await saveAutoMatch(entityId, 'apple_music', sourceUrl, candidateId);
+    await sql`
+      INSERT INTO entity_matches (entity_id, platform, matched_url, matched_by, candidate_id, updated_at, uncertain)
+      VALUES (${entityId}, 'apple_music', ${sourceUrl}, 'auto', ${candidateId || null}, now(), false)
+      ON CONFLICT (entity_id, platform) DO UPDATE
+        SET matched_url = EXCLUDED.matched_url, matched_by = 'auto', candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
+    `;
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY rank ASC`;
-    return { url: sourceUrl, matchedBy: 'explicit', candidates };
+    return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
   }
 
   // Cache hit — reuse the previously auto/manually matched link for this entity.
   if (cached.apple_music) {
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY rank ASC`;
-    return { url: cached.apple_music.url, matchedBy: cached.apple_music.matched_by, candidates, uncertain: cached.apple_music.uncertain };
+    return { url: cached.apple_music.url, matchedBy: cached.apple_music.matched_by, candidates, uncertain: cached.apple_music.url === sourceUrl || cached.apple_music.matched_by === 'explicit' ? false : cached.apple_music.uncertain };
   }
 
   let appleUrl = `https://music.apple.com/${country.toLowerCase()}/search?term=${encodeURIComponent(searchTerm)}`;
@@ -481,14 +486,19 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
       `;
       candidateId = inserted[0].id;
     }
-    await saveAutoMatch(entityId, 'spotify', sourceUrl, candidateId);
+    await sql`
+      INSERT INTO entity_matches (entity_id, platform, matched_url, matched_by, candidate_id, updated_at, uncertain)
+      VALUES (${entityId}, 'spotify', ${sourceUrl}, 'auto', ${candidateId || null}, now(), false)
+      ON CONFLICT (entity_id, platform) DO UPDATE
+        SET matched_url = EXCLUDED.matched_url, matched_by = 'auto', candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
+    `;
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY rank ASC`;
-    return { url: sourceUrl, matchedBy: 'explicit', candidates };
+    return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
   }
 
   if (cached.spotify) {
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY rank ASC`;
-    return { url: cached.spotify.url, matchedBy: cached.spotify.matched_by, candidates, uncertain: cached.spotify.uncertain };
+    return { url: cached.spotify.url, matchedBy: cached.spotify.matched_by, candidates, uncertain: cached.spotify.url === sourceUrl || cached.spotify.matched_by === 'explicit' ? false : cached.spotify.uncertain };
   }
 
   const result = await searchSpotifyViaSpotapi(searchTerm, isAlbum, cleanTitle, cleanArtist);
@@ -539,9 +549,14 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
       `;
       candidateId = inserted[0].id;
     }
-    await saveAutoMatch(entityId, 'youtube', sourceUrl, candidateId);
+    await sql`
+      INSERT INTO entity_matches (entity_id, platform, matched_url, matched_by, candidate_id, updated_at, uncertain)
+      VALUES (${entityId}, 'youtube', ${sourceUrl}, 'auto', ${candidateId || null}, now(), false)
+      ON CONFLICT (entity_id, platform) DO UPDATE
+        SET matched_url = EXCLUDED.matched_url, matched_by = 'auto', candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
+    `;
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY rank ASC`;
-    return { url: sourceUrl, matchedBy: 'explicit', candidates };
+    return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
   }
 
   if (cached.youtube) {
