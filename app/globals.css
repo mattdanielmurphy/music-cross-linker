@@ -25,8 +25,8 @@
 }
 
 body {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--bg-gradient, #08090a);
+  color: var(--text-primary, #fff);
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
   letter-spacing: -0.02em;
   min-height: 100vh;
@@ -59,8 +59,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--card-border);
+  background: var(--card-bg, rgba(255, 255, 255, 0.1));
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .track-header {
@@ -84,12 +85,13 @@ body {
   font-weight: 800;
   line-height: 1.2;
   margin-bottom: 0.35rem;
+  color: var(--text-primary);
 }
 
 .track-artist {
   font-size: 2rem;
   font-weight: 400;
-  /*color: var(--text-secondary);*/
+  color: var(--text-secondary);
   margin: 0;
   margin-top: 0.15rem;
 }
@@ -283,15 +285,14 @@ body {
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease;
-  color: #fff;
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-sizing: border-box;
 }
 
 .btn-link.spotify {
-  /*background: rgba(29, 185, 84, 0.15);*/
-  border-color: rgba(29, 185, 84, 0.5);
-  color: #1db954;
+  border-color: rgba(29, 185, 84, 0.3);
 }
 
 .btn-link.spotify:hover {
@@ -302,9 +303,7 @@ body {
 }
 
 .btn-link.apple {
-  /*background: rgba(252, 60, 68, 0.15);*/
-  border-color: rgba(252, 60, 68, 0.5);
-  color: #fc3c44;
+  border-color: rgba(252, 60, 68, 0.3);
 }
 
 .btn-link.apple:hover {

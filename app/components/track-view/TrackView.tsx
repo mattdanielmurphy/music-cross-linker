@@ -127,7 +127,7 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
       <div className="track-card">
         <header className="track-header">
           <div className="badge">{ctx.isAlbum ? 'Album Link' : 'Track Link'}</div>
-          <h1 className="track-title accent-text">
+          <h1 className="track-title">
             {cleanYouTubeTitle(displayPrimary)}
             {displayYear && <span className="year-chip">{displayYear}</span>}
           </h1>
