@@ -179,7 +179,7 @@ async function callSpotapiEntity(
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) {
-      console.error('SpotAPI service returned non-OK status:', res.status);
+      console.error(`SpotAPI service returned non-OK status: ${res.status} for ${endpoint}`);
       return null;
     }
     const data = await res.json();
