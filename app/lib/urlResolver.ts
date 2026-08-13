@@ -1,5 +1,6 @@
 import sql from './db';
 import * as cheerio from 'cheerio';
+import { cleanYouTubeTitle, parseYouTubeTitle } from './youtube/titleParser';
 
 // ---------------------------------------------------------------------------
 // Shared match confidence classification.
@@ -269,8 +270,25 @@ export async function resolveEntity(
   sourceUrl?: string
 ): Promise<EntityContext> {
   const countryCode = country.toUpperCase();
-  const cleanArtist = (artist || '').trim();
-  const cleanTitle = (title || '').trim();
+  const cleanArtistRaw = (artist || '').trim();
+  const cleanTitleRaw = (title || '').trim();
+
+  let cleanArtist = cleanArtistRaw;
+  let cleanTitle = cleanTitleRaw;
+
+  let sourcePlatform: EntityContext['sourcePlatform'] = 'unknown';
+  if (sourceUrl?.includes('apple.com')) sourcePlatform = 'apple_music';
+  if (sourceUrl?.includes('spotify.com')) sourcePlatform = 'spotify';
+  if (sourceUrl?.includes('youtube.com') || sourceUrl?.includes('youtu.be')) sourcePlatform = 'youtube';
+
+  if (sourcePlatform === 'youtube' || /[\(\[\{]/.test(cleanTitle)) {
+    const parsed = parseYouTubeTitle(cleanTitle, cleanArtist);
+    if (parsed.artist && (!cleanArtist || cleanArtist === 'Unknown Artist')) {
+      cleanArtist = parsed.artist;
+    }
+    cleanTitle = parsed.title || cleanTitle;
+  }
+
   const searchTerm = (cleanArtist && cleanArtist !== 'Unknown Artist')
     ? `${cleanArtist} ${cleanTitle}`
     : cleanTitle;
@@ -498,7 +516,7 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
     let yTitle = null, yThumbnail = null;
     try {
       const oembed = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(sourceUrl)}&format=json`).then(r => r.json());
-      yTitle = oembed.title;
+      yTitle = cleanYouTubeTitle(oembed.title);
       yThumbnail = oembed.thumbnail_url;
     } catch (e) {}
     const existing = await sql`SELECT id FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' AND candidate_url = ${sourceUrl} LIMIT 1`;
@@ -534,7 +552,7 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
         let yTitle: string | null = null, yThumbnail: string | null = null;
         try {
           const oembed = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(candidateUrl)}&format=json`).then(r => r.json());
-          yTitle = oembed.title;
+          yTitle = cleanYouTubeTitle(oembed.title);
           yThumbnail = oembed.thumbnail_url;
         } catch (e) {}
 
