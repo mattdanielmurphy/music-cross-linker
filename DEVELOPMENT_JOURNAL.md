@@ -17,3 +17,4 @@
 
 - Fixed Vercel deployment crash by resolving read-only filesystem error in slugStore and preserving Apple Music query params in route resolver.
 - August 12, 2026 - YouTube Title Cleanup & Hybrid AI Parsing: Implemented YouTube title cleaner (HTML entity decoding, noise tag stripping, depth-aware bracket repair for trailing parens like 'Physical Graffiti (', CJK bracket normalization) and progressive enhancement for Chrome Built-in AI (Prompt API window.ai) with fallback.
+- August 12, 2026 - Hydration Mismatch Fix: Added `suppressHydrationWarning={true}` to YouTube `<iframe>` in `app/components/ResolvingRedirect.tsx` to eliminate React 19 / Next.js SSR hydration warnings. [Read Log](agent-logs/2026-08-12_18-26_fix-resolving-redirect-hydration-mismatch.md)
