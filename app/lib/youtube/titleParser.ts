@@ -23,13 +23,16 @@ export function normalizeBrackets(text: string): string {
 export function stripNoiseTags(text: string): string {
   const noisePatterns = [
     /\(official (video|music video|audio|lyric video|hd video)\)/gi,
-    /\((lyric video|visualizer|full album|full album stream|hq|hd|4k|1080p|lyrics|audio|explicit|clean|deluxe edition)\)/gi,
+    /\((lyric video|visualizer|full album|full album stream|full album audio|full album playlist|hq|hd|4k|1080p|lyrics|audio|explicit|clean|deluxe edition)\)/gi,
     /\(remastered.*?\)/gi,
     /\(\d{4} remaster\)/gi,
     /\[official (video|music video|audio|lyric video|hd video)\]/gi,
-    /\[(lyric video|visualizer|full album|full album stream|hq|hd|4k|1080p|lyrics|audio|explicit|clean|deluxe edition)\]/gi,
+    /\[(lyric video|visualizer|full album|full album stream|full album audio|full album playlist|hq|hd|4k|1080p|lyrics|audio|explicit|clean|deluxe edition)\]/gi,
     /\[remastered.*?\]/gi,
     /\[\d{4} remaster\]/gi,
+    /\b(full album|full album stream|full album audio|full album playlist)\b/gi,
+    /\(seamless transitions?\)/gi,
+    /\bseamless transitions?\b/gi,
   ];
 
   let result = text;

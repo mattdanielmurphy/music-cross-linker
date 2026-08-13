@@ -70,4 +70,24 @@ describe('YouTube title parsing', () => {
     expect(artist).toBe('Led Zeppelin');
     expect(title).toBe('Physical Graffiti');
   });
+
+  it('cleans seamless transitions and full album', () => {
+    expect(
+      cleanYouTubeTitle('Ravedeath 1972 (Seamless transitions) Full album')
+    ).toBe('Ravedeath 1972');
+  });
+
+  it('parses Tim Hecker - Ravedeath 1972 (Seamless transitions) Full album', () => {
+    const { artist, title } = parseYouTubeTitle(
+      'Tim Hecker - Ravedeath 1972 (Seamless transitions) Full album'
+    );
+    expect(artist).toBe('Tim Hecker');
+    expect(title).toBe('Ravedeath 1972');
+  });
+
+  it('removes unparenthesized Full album', () => {
+    expect(cleanYouTubeTitle('Artist - Title Full album')).toBe(
+      'Artist - Title'
+    );
+  });
 });
