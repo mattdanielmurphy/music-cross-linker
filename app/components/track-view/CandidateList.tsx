@@ -95,7 +95,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
   };
 
   return (
-    <div style={{ marginTop: '10px', background: 'var(--surface-bg)', border: '1px solid var(--card-border)', borderRadius: 'var(--radius-lg)', padding: '14px', color: 'var(--text-primary)' }}>
+    <div style={{ marginTop: '10px' }}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         style={{ 
@@ -114,7 +114,7 @@ export default function CandidateList({ platform, candidates, entityId, currentU
       </button>
 
       {isOpen && (
-        <div style={{ marginTop: '10px' }}>
+        <div style={{ marginTop: '10px', background: 'var(--surface-bg)', border: '1px solid var(--card-border)', borderRadius: 'var(--radius-lg)', padding: '14px', color: 'var(--text-primary)' }}>
           <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9em', fontWeight: 600 }}>Select better match:</h4>
 
           <form onSubmit={(e) => runSearch(e)} style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
