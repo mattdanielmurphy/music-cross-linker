@@ -407,6 +407,10 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
         RETURNING id
       `;
       candidateId = inserted[0].id;
+    } else {
+      await sql`
+        UPDATE match_candidates SET confidence = 1, source = 'explicit' WHERE id = ${candidateId}
+      `;
     }
     await sql`
       INSERT INTO entity_matches (entity_id, platform, matched_url, matched_by, candidate_id, updated_at, uncertain)
@@ -485,6 +489,10 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
         RETURNING id
       `;
       candidateId = inserted[0].id;
+    } else {
+      await sql`
+        UPDATE match_candidates SET confidence = 1, source = 'explicit' WHERE id = ${candidateId}
+      `;
     }
     await sql`
       INSERT INTO entity_matches (entity_id, platform, matched_url, matched_by, candidate_id, updated_at, uncertain)
@@ -548,6 +556,10 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
         RETURNING id
       `;
       candidateId = inserted[0].id;
+    } else {
+      await sql`
+        UPDATE match_candidates SET confidence = 1, source = 'explicit' WHERE id = ${candidateId}
+      `;
     }
     await sql`
       INSERT INTO entity_matches (entity_id, platform, matched_url, matched_by, candidate_id, updated_at, uncertain)

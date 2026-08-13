@@ -483,8 +483,8 @@ body {
 
 .global-url-tip-footer {
   text-align: center;
-  padding: 1rem 1.5rem;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 2rem 1.5rem;
+  /*background: rgba(255, 255, 255, 0.03);*/
   border-top: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -492,11 +492,11 @@ body {
 }
 
 .global-url-tip-footer code {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.01);
   padding: 0.15rem 0.35rem;
   border-radius: 4px;
   font-family: monospace;
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
 
 .search-results-grid {
