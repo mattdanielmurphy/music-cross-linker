@@ -2,25 +2,37 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { YouTubeVideoCandidate } from "./lib/youtube";
 
 export default function Home() {
   const router = useRouter();
+  const [input, setInput] = useState("");
+  const [results, setResults] = useState<YouTubeVideoCandidate[] | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const [mode, setMode] = useState<"search" | "fields">("search");
-  const [urlOrSearch, setUrlOrSearch] = useState("");
-  const [artist, setArtist] = useState("");
-  const [albumOrTrack, setAlbumOrTrack] = useState("");
+  const isUrl = (s: string) =>
+    s.startsWith("http://") ||
+    s.startsWith("https://") ||
+    /youtube\.com|spotify\.com|apple\.com|youtu\.be/i.test(s);
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (mode === "fields") {
-      if (artist.trim() && albumOrTrack.trim()) {
-        router.push("/" + encodeURIComponent(artist.trim()) + "/" + encodeURIComponent(albumOrTrack.trim()));
-      }
+    const trimmed = input.trim();
+    if (!trimmed) return;
+
+    if (isUrl(trimmed)) {
+      router.push("/" + encodeURIComponent(trimmed));
     } else {
-      const trimmed = urlOrSearch.trim();
-      if (trimmed) {
-        router.push("/" + encodeURIComponent(trimmed));
+      setLoading(true);
+      setResults(null);
+      try {
+        const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(trimmed)}`);
+        const data = await res.json();
+        setResults(data.results || []);
+      } catch (err) {
+        console.error("Search failed", err);
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -32,63 +44,44 @@ export default function Home() {
           <h1 className="track-title accent-text">Music Cross Linker</h1>
           <p className="track-artist">Convert and share music links seamlessly.</p>
         </header>
-        <div className="tab-container">
-          <button 
-            type="button" 
-            className={`tab ${mode === 'search' ? 'active' : ''}`} 
-            onClick={() => setMode('search')}
-          >
-            Paste Link / Search
-          </button>
-          <button 
-            type="button" 
-            className={`tab ${mode === 'fields' ? 'active' : ''}`} 
-            onClick={() => setMode('fields')}
-          >
-            Manual Entry
-          </button>
-        </div>
 
         <form className="search-form" onSubmit={handleSubmit}>
-          {mode === "search" ? (
-            <div className="input-group">
-              <input 
-                value={urlOrSearch}
-                onChange={(e) => setUrlOrSearch(e.target.value)}
-                type="text" 
-                placeholder="Paste song or artist URL..." 
-                className="input-field"
-                required 
-              />
-            </div>
-          ) : (
-            <div className="manual-fields">
-              <div className="input-group">
-                <input 
-                  value={artist}
-                  onChange={(e) => setArtist(e.target.value)}
-                  type="text" 
-                  placeholder="Artist" 
-                  className="input-field"
-                  required 
-                />
-              </div>
-              <div className="input-group">
-                <input 
-                  value={albumOrTrack}
-                  onChange={(e) => setAlbumOrTrack(e.target.value)}
-                  type="text" 
-                  placeholder="Track / Album" 
-                  className="input-field"
-                  required 
-                />
-              </div>
-            </div>
-          )}
-          <button type="submit" className="btn-submit">Find Music</button>
+          <div className="input-group">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              type="text"
+              placeholder="Paste song URL or search for a song..."
+              className="input-field"
+              required
+            />
+          </div>
+          <button type="submit" className="btn-submit" disabled={loading}>
+            {loading ? "Searching..." : "Find"}
+          </button>
         </form>
 
-        
+        {loading && <div className="search-loading">Searching YouTube...</div>}
+
+        {results && (
+          <div className="search-results-grid">
+            {results.map((video) => (
+              <div
+                key={video.id}
+                className="video-card"
+                onClick={() => router.push(`/https://www.youtube.com/watch?v=${video.id}`)}
+              >
+                {video.thumbnail && (
+                  <img src={video.thumbnail} alt={video.title} className="video-thumbnail" />
+                )}
+                <div className="video-info">
+                  <div className="video-title">{video.title}</div>
+                  {video.channel && <div className="video-channel">{video.channel}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );

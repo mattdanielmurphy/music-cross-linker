@@ -1,21 +1,16 @@
 export interface YouTubeVideoCandidate {
   id: string;
   title: string;
+  channel?: string;
+  thumbnail?: string;
 }
 
-export async function getTopVideos(
-  artist: string,
-  title: string,
-  type: 'track' | 'album' = 'track',
-  limit = 5
+export async function searchYouTubeVideos(
+  query: string,
+  limit = 10
 ): Promise<YouTubeVideoCandidate[]> {
-  const isAlbum = type === 'album';
-  const queryText = isAlbum
-    ? (artist ? `${artist} ${title} full album` : `${title} full album`)
-    : (artist ? `${artist} ${title} official audio` : `${title} official audio`);
-  const query = encodeURIComponent(queryText);
-  console.log('[YOUTUBE SEARCH QUERY]', { artist, title, type, queryText });
-  const res = await fetch(`https://www.youtube.com/results?search_query=${query}`, {
+  const encodedQuery = encodeURIComponent(query);
+  const res = await fetch(`https://www.youtube.com/results?search_query=${encodedQuery}`, {
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -36,19 +31,35 @@ export async function getTopVideos(
     const titleMatch = block.match(
       /"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"(.*?)"/
     );
+    const channelMatch = block.match(/"longBylineText":[\s\S]*?"text":"(.*?)"/);
 
     if (videoIdMatch && videoIdMatch[1]) {
       const id = videoIdMatch[1];
-      const videoTitle = titleMatch ? titleMatch[1] : 'YouTube Video';
+      const videoTitle = titleMatch ? titleMatch[1].replace(/\\"/g, '"') : 'YouTube Video';
+      const channel = channelMatch ? channelMatch[1] : undefined;
+      const thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+
       if (!seenIds.has(id)) {
         seenIds.add(id);
-        candidates.push({ id, title: videoTitle });
+        candidates.push({ id, title: videoTitle, channel, thumbnail });
       }
     }
   }
 
-  console.log('[YOUTUBE RAW CANDIDATES]', candidates);
   return candidates.slice(0, limit);
+}
+
+export async function getTopVideos(
+  artist: string,
+  title: string,
+  type: 'track' | 'album' = 'track',
+  limit = 5
+): Promise<YouTubeVideoCandidate[]> {
+  const isAlbum = type === 'album';
+  const queryText = isAlbum
+    ? (artist ? `${artist} ${title} full album` : `${title} full album`)
+    : (artist ? `${artist} ${title} official audio` : `${title} official audio`);
+  return searchYouTubeVideos(queryText, limit);
 }
 
 export async function getTopVideoId(
