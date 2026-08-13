@@ -47,8 +47,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             // Single batched multi-row insert instead of one round trip per
             // candidate — with limit=30+ (after a few "Load More" clicks) the
             // old sequential-await loop took several seconds just for DB writes.
-            const inserted = await sql`INSERT INTO match_candidates ${sql(rows)} RETURNING *`;
-            candidates.push(...inserted);
+            const inserted = await sql`
+              INSERT INTO match_candidates ${sql(rows)}
+              ON CONFLICT (entity_id, platform, candidate_url)
+              DO UPDATE SET
+                rank = EXCLUDED.rank,
+                title = EXCLUDED.title,
+                artist = EXCLUDED.artist,
+                thumbnail_url = EXCLUDED.thumbnail_url
+              RETURNING *
+            `;
+            const allCandidates = await sql`
+              SELECT * FROM match_candidates
+              WHERE entity_id = ${entityId} AND platform = 'spotify'
+              ORDER BY rank ASC
+              LIMIT ${limit}
+            `;
+            candidates.push(...allCandidates);
           }
         } catch (e) {
           console.error('SpotAPI candidate search failed:', e);
@@ -67,8 +82,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           rank: i + 1,
           source: 'manual_search',
         }));
-        const inserted = await sql`INSERT INTO match_candidates ${sql(rows)} RETURNING *`;
-        candidates.push(...inserted);
+        const inserted = await sql`
+          INSERT INTO match_candidates ${sql(rows)}
+          ON CONFLICT (entity_id, platform, candidate_url)
+          DO UPDATE SET
+            rank = EXCLUDED.rank,
+            title = EXCLUDED.title,
+            artist = EXCLUDED.artist,
+            thumbnail_url = EXCLUDED.thumbnail_url
+          RETURNING *
+        `;
+        const allCandidates = await sql`
+          SELECT * FROM match_candidates
+          WHERE entity_id = ${entityId} AND platform = 'youtube'
+          ORDER BY rank ASC
+          LIMIT ${limit}
+        `;
+        candidates.push(...allCandidates);
       }
     } else if (platform === 'apple_music') {
       const itunesSearch = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song,album&limit=${limit}`)
@@ -93,8 +123,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           }));
 
         if (rows.length > 0) {
-          const inserted = await sql`INSERT INTO match_candidates ${sql(rows)} RETURNING *`;
-          candidates.push(...inserted);
+          const inserted = await sql`
+            INSERT INTO match_candidates ${sql(rows)}
+            ON CONFLICT (entity_id, platform, candidate_url)
+            DO UPDATE SET
+              rank = EXCLUDED.rank,
+              title = EXCLUDED.title,
+              artist = EXCLUDED.artist,
+              thumbnail_url = EXCLUDED.thumbnail_url
+            RETURNING *
+          `;
+          const allCandidates = await sql`
+            SELECT * FROM match_candidates
+            WHERE entity_id = ${entityId} AND platform = 'apple_music'
+            ORDER BY rank ASC
+            LIMIT ${limit}
+          `;
+          candidates.push(...allCandidates);
         }
       }
     }

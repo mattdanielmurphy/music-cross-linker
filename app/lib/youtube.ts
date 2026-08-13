@@ -22,7 +22,7 @@ export async function searchYouTubeVideos(
   const seenIds = new Set<string>();
 
   const videoMatches = Array.from(
-    html.matchAll(/"videoRenderer":\s*({[\s\S]*?})(?=,\s*"videoRenderer"|\]\}\}\}\})/g)
+    html.matchAll(/"videoRenderer"\s*:\s*(\{[\s\S]*?\})(?=,\s*"videoRenderer"|,\s*"compactVideoRenderer"|,\s*"continuationItemRenderer"|\]\}\}\}\})/g)
   );
 
   for (const match of videoMatches) {
