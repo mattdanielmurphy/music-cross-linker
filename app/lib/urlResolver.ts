@@ -162,13 +162,19 @@ async function fetchAppleMusicMetadata(url: string) {
   return { title: null, artist: null, thumbnail_url: null };
 }
 
+interface SpotapiResult {
+  url: string;
+  confidence: Confidence;
+  isServerError?: boolean;
+}
+
 async function callSpotapiEntity(
   baseUrl: string,
   endpoint: 'search-track' | 'search-album',
   query: string,
   title?: string,
   artist?: string
-): Promise<{ url: string; confidence: Confidence } | null> {
+): Promise<SpotapiResult | null> {
   try {
     const params = new URLSearchParams({ q: query });
     if (title) params.set('title', title);
@@ -180,14 +186,14 @@ async function callSpotapiEntity(
     });
     if (!res.ok) {
       console.error(`SpotAPI service returned non-OK status: ${res.status} for ${endpoint}`);
-      return null;
+      return { url: '', confidence: 'none', isServerError: true };
     }
     const data = await res.json();
     if (!data?.url) return null;
     return { url: data.url, confidence: (data.confidence as Confidence) || 'low' };
   } catch (e) {
     console.error('SpotAPI service fetch failed:', e);
-    return null;
+    return { url: '', confidence: 'none', isServerError: true };
   }
 }
 
@@ -211,7 +217,7 @@ async function searchSpotifyViaSpotapi(
   isAlbum: boolean,
   title?: string,
   artist?: string
-): Promise<{ url: string; confidence: Confidence } | null> {
+): Promise<SpotapiResult | null> {
   const baseUrl = process.env.SPOTAPI_URL;
   if (!baseUrl) {
     console.error('SPOTAPI_URL is not configured; skipping SpotAPI lookup');
@@ -222,15 +228,23 @@ async function searchSpotifyViaSpotapi(
   const fallbackEndpoint = isAlbum ? 'search-track' : 'search-album';
 
   const primary = await callSpotapiEntity(baseUrl, primaryEndpoint, query, title, artist);
+  if (primary?.isServerError) {
+    return null;
+  }
   if (primary?.confidence === 'high') return primary;
 
   const fallback = await callSpotapiEntity(baseUrl, fallbackEndpoint, query, title, artist);
+  if (fallback?.isServerError) {
+    return primary && !primary.isServerError ? primary : null;
+  }
   if (fallback?.confidence === 'high') return fallback;
 
   // Neither entity type found a confident match — prefer whichever result we
   // have (primary guess wins ties), rather than confidently returning 'low'
   // over nothing at all.
-  return primary || fallback || null;
+  const validPrimary = primary && !primary.isServerError ? primary : null;
+  const validFallback = fallback && !fallback.isServerError ? fallback : null;
+  return validPrimary || validFallback || null;
 }
 
 export interface CachedMatch {
