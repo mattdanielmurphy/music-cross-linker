@@ -298,11 +298,6 @@ export async function resolveEntity(
     isAlbum = true;
   }
 
-  let sourcePlatform: EntityContext['sourcePlatform'] = 'unknown';
-  if (sourceUrl?.includes('apple.com')) sourcePlatform = 'apple_music';
-  if (sourceUrl?.includes('spotify.com')) sourcePlatform = 'spotify';
-  if (sourceUrl?.includes('youtube.com') || sourceUrl?.includes('youtu.be')) sourcePlatform = 'youtube';
-
   const fingerprint = fingerprintFor(cleanArtist, cleanTitle);
 
   let entityId: string | null = null;
