@@ -397,8 +397,10 @@ export async function resolveEntity(
   let canonicalArtist: string | null = null;
 
   if (entityId) {
-    const albumMatch = await sql`SELECT entity_id FROM match_candidates WHERE entity_id = ${entityId} AND candidate_url LIKE '%/album/%' LIMIT 1`;
-    if (albumMatch.length > 0) isAlbum = true;
+    if (!typeHint) {
+      const albumMatch = await sql`SELECT entity_id FROM match_candidates WHERE entity_id = ${entityId} AND candidate_url LIKE '%/album/%' LIMIT 1`;
+      if (albumMatch.length > 0) isAlbum = true;
+    }
 
     const canonical = await sql`SELECT title, artist FROM match_candidates WHERE entity_id = ${entityId} AND title IS NOT NULL AND confidence = 1 ORDER BY rank ASC LIMIT 1`;
     if (canonical[0]) {
@@ -406,11 +408,13 @@ export async function resolveEntity(
       canonicalArtist = canonical[0].artist;
     }
 
-    const matches = await sql`
-      SELECT platform, matched_url, matched_by, uncertain FROM entity_matches WHERE entity_id = ${entityId}
-    `;
-    for (const m of matches) {
-      cached[m.platform as Platform] = { url: m.matched_url, matched_by: m.matched_by, uncertain: !!m.uncertain };
+    if (!typeHint) {
+      const matches = await sql`
+        SELECT platform, matched_url, matched_by, uncertain FROM entity_matches WHERE entity_id = ${entityId}
+      `;
+      for (const m of matches) {
+        cached[m.platform as Platform] = { url: m.matched_url, matched_by: m.matched_by, uncertain: !!m.uncertain };
+      }
     }
 
     if (!isAlbum) {
@@ -424,6 +428,9 @@ export async function resolveEntity(
     `;
     entityId = inserted[0].id;
   }
+
+  if (typeHint === 'album') isAlbum = true;
+  else if (typeHint === 'track') isAlbum = false;
 
   return { entityId: entityId as string, isAlbum, country: countryCode, sourcePlatform, cleanArtist, cleanTitle, searchTerm, cached, canonicalTitle, canonicalArtist, typeHint };
 }
