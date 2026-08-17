@@ -19,33 +19,48 @@ export async function searchYouTubeVideos(
   const html = await res.text();
 
   const candidates: YouTubeVideoCandidate[] = [];
-  const seenIds = new Set<string>();
 
-  // Extract all videoRenderer JSON blocks or videoId matches
-  const videoIdMatches = Array.from(html.matchAll(/"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/g));
+  try {
+    const ytInitialDataMatch = html.match(/var ytInitialData = ({.*?});<\/script>/);
+    if (ytInitialDataMatch) {
+      const ytInitialData = JSON.parse(ytInitialDataMatch[1]);
+      const contents =
+        ytInitialData.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
 
-  for (const match of videoIdMatches) {
-    const id = match[1];
-    if (seenIds.has(id)) continue;
-
-    // Find the slice of HTML around this videoId to get title and channel name
-    const idx = match.index || 0;
-    const block = html.slice(idx, idx + 2500);
-
-    const titleMatch = block.match(/"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"(.*?)"/);
-    const channelMatch = block.match(/"longBylineText":[\s\S]*?"text":"(.*?)"/);
-
-    const videoTitle = titleMatch ? titleMatch[1].replace(/\\"/g, '"').replace(/\\u0026/g, '&') : 'YouTube Video';
-    const channel = channelMatch ? channelMatch[1] : undefined;
-    const thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
-
-    seenIds.add(id);
-    candidates.push({ id, title: videoTitle, channel, thumbnail });
-
-    if (candidates.length >= limit) break;
+      for (const section of contents) {
+        const itemSection = section.itemSectionRenderer?.contents || [];
+        for (const item of itemSection) {
+          const video = item.videoRenderer;
+          if (video && video.videoId) {
+            const titleRuns = video.title?.runs?.map((r: any) => r.text).join('') || video.title?.simpleText || 'YouTube Video';
+            const channel = video.ownerText?.runs?.map((r: any) => r.text).join('') || video.shortBylineText?.runs?.map((r: any) => r.text).join('') || video.longBylineText?.runs?.map((r: any) => r.text).join('');
+            candidates.push({
+              id: video.videoId,
+              title: titleRuns,
+              channel: channel || undefined,
+              thumbnail: video.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`,
+            });
+          }
+          if (candidates.length >= limit) break;
+        }
+        if (candidates.length >= limit) break;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to parse ytInitialData, falling back to regex', e);
   }
 
-  return candidates;
+  if (candidates.length === 0) {
+    const videoIdMatches = Array.from(html.matchAll(/"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/g));
+    for (const match of videoIdMatches) {
+      const id = match[1];
+      const thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+      candidates.push({ id, title: 'YouTube Video', thumbnail });
+      if (candidates.length >= limit) break;
+    }
+  }
+
+  return candidates.slice(0, limit);
 }
 
 export async function getTopVideos(
@@ -60,6 +75,7 @@ export async function getTopVideos(
     : (artist ? `${artist} ${title} official audio` : `${title} official audio`);
   return searchYouTubeVideos(queryText, limit);
 }
+
 
 export async function getTopVideoId(
   artist: string,

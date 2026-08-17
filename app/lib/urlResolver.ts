@@ -1,6 +1,7 @@
 import sql from './db';
 import * as cheerio from 'cheerio';
 import { cleanYouTubeTitle, parseYouTubeTitle } from './youtube/titleParser';
+import { getTopVideos } from './youtube';
 
 // ---------------------------------------------------------------------------
 // Shared match confidence classification.
@@ -65,7 +66,8 @@ function classifyMatch(
   candidateTitle: string | null | undefined,
   candidateArtist: string | null | undefined,
   title: string | null | undefined,
-  artist: string | null | undefined
+  artist: string | null | undefined,
+  isAlbum?: boolean
 ): Confidence {
   const normTitle = normalizeForMatch(title);
   const normArtist = normalizeForMatch(artist);
@@ -79,23 +81,32 @@ function classifyMatch(
   if (normTitle && !titleIsSingleWord) {
     const re = new RegExp(`\\b${normTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
     titleWordMatch = re.test(name);
+  } else if (normTitle && titleIsSingleWord) {
+    titleWordMatch = name.includes(normTitle);
   }
 
   const artistUnknown = !normArtist;
-  // Some sources (e.g. YouTube oEmbed) don't give us a separate artist field at
-  // all, so in that case only, also credit a match if the artist name appears
-  // in the candidate's title text itself (e.g. "Tiny Tim - Rock"). We don't
-  // apply this when a structured artist field IS present (e.g. iTunes/Spotify)
-  // since that field is authoritative and a title coincidentally containing
-  // the artist's name (e.g. a compilation literally titled "Tiny Tim") would
-  // otherwise produce false positives.
   const artistInTitle =
-    candArtist.length === 0 &&
     !!normArtist &&
     new RegExp(`\\b${normArtist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(name);
   const artistMatch =
     !!normArtist &&
     ((candArtist.length > 0 && (candArtist.includes(normArtist) || normArtist.includes(candArtist))) || artistInTitle);
+
+  if (isAlbum) {
+    const isFullAlbum = /\b(full album|full concert|album|full set|complete album)\b/i.test(candidateTitle || '');
+    const isSingleTrack = /\b(official audio|official video|official lyric|single|clip)\b/i.test(candidateTitle || '') && !isFullAlbum;
+    
+    if (isFullAlbum && (artistMatch || artistUnknown) && (titleWordMatch || titleExact || artistInTitle)) {
+      return 'high';
+    }
+    if (isSingleTrack) {
+      return 'none';
+    }
+    if (artistMatch && (titleWordMatch || titleExact)) {
+      return 'high';
+    }
+  }
 
   const sim = similarity(`${normArtist} ${normTitle}`.trim(), `${name} ${candArtist}`.trim());
 
@@ -619,23 +630,17 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
 }
 
 export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: string): Promise<PlatformResult> {
-  const { entityId, cleanTitle, cleanArtist, searchTerm, cached } = ctx;
+  const { entityId, cleanTitle, cleanArtist, isAlbum, cached } = ctx;
 
   if (ctx.sourcePlatform === 'youtube' && sourceUrl) {
-    let yTitle = null, yThumbnail = null;
-    try {
-      const oembed = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(sourceUrl)}&format=json`).then(r => r.json());
-      yTitle = cleanYouTubeTitle(oembed.title);
-      yThumbnail = oembed.thumbnail_url;
-    } catch (e) {}
     const existing = await sql`SELECT id FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' AND candidate_url = ${sourceUrl} LIMIT 1`;
     let candidateId = existing[0]?.id;
     if (!candidateId) {
       const inserted = await sql`
-        INSERT INTO match_candidates (entity_id, platform, candidate_url, title, thumbnail_url, rank, source, confidence)
-        VALUES (${entityId}, 'youtube', ${sourceUrl}, ${yTitle}, ${yThumbnail}, 1, 'explicit', 1)
+        INSERT INTO match_candidates (entity_id, platform, candidate_url, rank, source, confidence)
+        VALUES (${entityId}, 'youtube', ${sourceUrl}, 1, 'explicit', 1)
         ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
-          SET title = EXCLUDED.title, thumbnail_url = EXCLUDED.thumbnail_url, rank = 1, source = 'explicit', confidence = 1
+          SET rank = 1, source = 'explicit', confidence = 1
         RETURNING id
       `;
       candidateId = inserted[0].id;
@@ -644,12 +649,7 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
         UPDATE match_candidates SET confidence = 1, source = 'explicit' WHERE id = ${candidateId}
       `;
     }
-    await sql`
-      INSERT INTO entity_matches (entity_id, platform, matched_url, matched_by, candidate_id, updated_at, uncertain)
-      VALUES (${entityId}, 'youtube', ${sourceUrl}, 'auto', ${candidateId || null}, now(), false)
-      ON CONFLICT (entity_id, platform) DO UPDATE
-        SET matched_url = EXCLUDED.matched_url, matched_by = 'auto', candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
-    `;
+    await saveAutoMatch(entityId, 'youtube', sourceUrl, candidateId);
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY rank ASC`;
     return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
   }
@@ -659,52 +659,45 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
     return { url: cached.youtube.url, matchedBy: cached.youtube.matched_by, candidates };
   }
 
-  const query = `site:youtube.com ${searchTerm}`;
-  const duckyUrl = `https://duckduckgo.com/?q=${encodeURIComponent(`!ducky ${query}`)}`;
-  let youtubeUrl = '';
-  let matchedBy: string | null = null;
-  try {
-    const html = await fetch(duckyUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.text());
-    const match = html.match(/uddg=([^&']+)/);
-    if (match) {
-      const candidateUrl = decodeURIComponent(match[1]);
-      if (candidateUrl.includes('youtube.com/watch') || candidateUrl.includes('youtu.be/')) {
-        let yTitle: string | null = null, yThumbnail: string | null = null;
-        try {
-          const oembed = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(candidateUrl)}&format=json`).then(r => r.json());
-          yTitle = cleanYouTubeTitle(oembed.title);
-          yThumbnail = oembed.thumbnail_url;
-        } catch (e) {}
+  const videos = await getTopVideos(cleanArtist, cleanTitle, isAlbum ? 'album' : 'track', 5);
+  
+  let bestUrl: string | null = null;
+  let bestCandidateId: string | null = null;
+  let highestConfidence: Confidence = 'none';
 
-        const confidence: Confidence = yTitle ? classifyMatch(yTitle, null, cleanTitle, cleanArtist) : 'low';
+  for (let i = 0; i < videos.length; i++) {
+    const v = videos[i];
+    const candidateUrl = `https://www.youtube.com/watch?v=${v.id}`;
+    const confidence = classifyMatch(v.title, v.channel, cleanTitle, cleanArtist, isAlbum);
+    const numericConfidence = confidenceToNumeric(confidence);
 
-        const inserted = await sql`
-          INSERT INTO match_candidates (entity_id, platform, candidate_url, title, thumbnail_url, rank, source, confidence)
-          VALUES (${entityId}, 'youtube', ${candidateUrl}, ${yTitle}, ${yThumbnail}, 1, 'youtube_ducky', ${confidenceToNumeric(confidence)})
-          ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
-            SET title = EXCLUDED.title, thumbnail_url = EXCLUDED.thumbnail_url, rank = EXCLUDED.rank, source = EXCLUDED.source, confidence = EXCLUDED.confidence
-          RETURNING id
-        `;
-
-        if (confidence !== 'none') {
-          youtubeUrl = candidateUrl;
-          await saveAutoMatch(entityId, 'youtube', youtubeUrl, inserted[0].id);
-          matchedBy = 'auto';
-        }
-      }
-    }
-    if (!youtubeUrl) throw new Error('No plausible YouTube result');
-  } catch (e) {
-    youtubeUrl = duckyUrl;
-    await sql`
-      INSERT INTO match_candidates (entity_id, platform, candidate_url, rank, source, confidence)
-      VALUES (${entityId}, 'youtube', ${youtubeUrl}, 0, 'youtube_fallback', null)
-      ON CONFLICT (entity_id, platform, candidate_url) DO NOTHING
+    const inserted = await sql`
+      INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
+      VALUES (${entityId}, 'youtube', ${candidateUrl}, ${v.title || null}, ${v.channel || null}, ${v.thumbnail || null}, ${i + 1}, 'youtube_search', ${numericConfidence})
+      ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
+        SET title = EXCLUDED.title, artist = EXCLUDED.artist, thumbnail_url = EXCLUDED.thumbnail_url, rank = EXCLUDED.rank, source = 'youtube_search', confidence = EXCLUDED.confidence
+      RETURNING id
     `;
+
+    if (confidence === 'high' && highestConfidence !== 'high') {
+      bestUrl = candidateUrl;
+      bestCandidateId = inserted[0].id;
+      highestConfidence = 'high';
+    } else if (confidence === 'low' && highestConfidence === 'none') {
+      bestUrl = candidateUrl;
+      bestCandidateId = inserted[0].id;
+      highestConfidence = 'low';
+    }
   }
 
-  const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY rank ASC`;
-  return { url: youtubeUrl, matchedBy, candidates };
+  if (bestUrl) {
+    await saveAutoMatch(entityId, 'youtube', bestUrl, bestCandidateId);
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY rank ASC`;
+    return { url: bestUrl, matchedBy: 'auto', candidates };
+  } else {
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY rank ASC`;
+    return { url: '', matchedBy: null, candidates };
+  }
 }
 
 /**
