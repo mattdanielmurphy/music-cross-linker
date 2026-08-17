@@ -9,6 +9,7 @@ import AppleSection from './AppleSection';
 import SpotifySection from './SpotifySection';
 import PlayerSkeleton from './PlayerSkeleton';
 import LoadingChip from './LoadingChip';
+import TypeBadge from './TypeBadge';
 
 /** Extract year (4-digit) from a string, return { text, year } */
 function extractYear(s: string): { text: string; year: string | null } {
@@ -59,9 +60,11 @@ function parseMusicTitle(title: string): { primary: string; secondary: string; y
 }
 
 export default async function TrackView({ artist, track, videoId: explicitVideoId, sourceUrl, searchParams }: any) {
+  const typeHint = (searchParams?.type === 'album' || searchParams?.type === 'track') ? searchParams.type : null;
   const formatSlug = (slug: string) =>
     decodeURIComponent(slug)
-      .split(/(?<!\d)-(?!\d)/)
+      .split('-')
+      .filter(Boolean)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
 
@@ -82,32 +85,34 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
   // via Suspense as soon as each resolves — the page shell renders instantly.
   let ctx;
   try {
-    ctx = await resolveEntity(a, t, country || 'CA', sourceUrl);
+    ctx = await resolveEntity(a, t, country || 'CA', sourceUrl, typeHint);
   } catch (e) {
     console.error('Failed to resolve entity:', e);
     ctx = {
       entityId: '',
-      isAlbum: false,
+      isAlbum: typeHint === 'album',
       country: country || 'CA',
       sourcePlatform: 'unknown' as const,
       cleanArtist: a,
       cleanTitle: t,
       searchTerm: a ? `${a} ${t}` : t,
       cached: {},
+      typeHint,
     };
   }
 
   const displaySource = t;
   const parsed = !a ? parseMusicTitle(displaySource) : null;
-  const displayPrimary = parsed ? parsed.primary : displaySource;
-  const displaySecondary = parsed ? parsed.secondary : (a || null);
+  const displayPrimary = ctx.canonicalTitle || (parsed ? parsed.primary : displaySource);
+  const displaySecondary = ctx.canonicalArtist || (parsed ? parsed.secondary : (a || null));
   const displayYear = parsed?.year || null;
+
 
   return (
     <div className="main-content">
       <div className="track-card">
         <header className="track-header">
-          <div className="badge">{ctx.isAlbum ? 'Album Link' : 'Track Link'}</div>
+          <TypeBadge isAlbum={ctx.isAlbum} typeHint={typeHint} />
           <h1 className="track-title accent-text">
             {cleanYouTubeTitle(displayPrimary)}
             {displayYear && <span className="year-chip">{displayYear}</span>}

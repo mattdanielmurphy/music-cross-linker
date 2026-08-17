@@ -303,6 +303,9 @@ export interface EntityContext {
   cleanArtist: string;
   cleanTitle: string;
   searchTerm: string;
+  canonicalTitle?: string | null;
+  canonicalArtist?: string | null;
+  typeHint?: 'album' | 'track' | null;
   /** Matches already known for this entity (from a previous resolution), keyed by platform. */
   cached: Partial<Record<Platform, CachedMatch>>;
 }
@@ -321,7 +324,8 @@ export async function resolveEntity(
   artist: string,
   title: string,
   country: string,
-  sourceUrl?: string
+  sourceUrl?: string,
+  typeHint?: 'album' | 'track' | null
 ): Promise<EntityContext> {
   const countryCode = country.toUpperCase();
   const cleanArtistRaw = (artist || '').trim();
@@ -348,7 +352,11 @@ export async function resolveEntity(
     : cleanTitle;
 
   let isAlbum = false;
-  if (sourceUrl?.includes('/album/') || sourceUrl?.includes('entity=album') || sourceUrl?.includes('list=')) {
+  if (typeHint === 'album') isAlbum = true;
+  else if (typeHint === 'track') isAlbum = false;
+  else if (sourceUrl?.includes('/album/') || sourceUrl?.includes('entity=album') || sourceUrl?.includes('list=')) {
+    isAlbum = true;
+  } else if (/(?:^|\s)(?:full\s+album|alive\s+\d{4}|live\s+at\s+)(?:$|\s)/i.test(cleanTitle)) {
     isAlbum = true;
   }
 
@@ -385,7 +393,19 @@ export async function resolveEntity(
     if (byFingerprint[0]?.id) entityId = byFingerprint[0].id;
   }
 
+  let canonicalTitle: string | null = null;
+  let canonicalArtist: string | null = null;
+
   if (entityId) {
+    const albumMatch = await sql`SELECT entity_id FROM match_candidates WHERE entity_id = ${entityId} AND candidate_url LIKE '%/album/%' LIMIT 1`;
+    if (albumMatch.length > 0) isAlbum = true;
+
+    const canonical = await sql`SELECT title, artist FROM match_candidates WHERE entity_id = ${entityId} AND title IS NOT NULL AND confidence = 1 ORDER BY rank ASC LIMIT 1`;
+    if (canonical[0]) {
+      canonicalTitle = canonical[0].title;
+      canonicalArtist = canonical[0].artist;
+    }
+
     const matches = await sql`
       SELECT platform, matched_url, matched_by, uncertain FROM entity_matches WHERE entity_id = ${entityId}
     `;
@@ -393,10 +413,6 @@ export async function resolveEntity(
       cached[m.platform as Platform] = { url: m.matched_url, matched_by: m.matched_by, uncertain: !!m.uncertain };
     }
 
-    // If the source URL didn't tell us whether this is an album (e.g. a known
-    // slug like `/yes/fragile` with no sourceUrl at all), fall back to any
-    // already-cached match URL's shape — album links on every platform we
-    // support contain '/album/' in the path.
     if (!isAlbum) {
       isAlbum = Object.values(cached).some((m) => m.url?.includes('/album/'));
     }
@@ -409,7 +425,7 @@ export async function resolveEntity(
     entityId = inserted[0].id;
   }
 
-  return { entityId: entityId as string, isAlbum, country: countryCode, sourcePlatform, cleanArtist, cleanTitle, searchTerm, cached };
+  return { entityId: entityId as string, isAlbum, country: countryCode, sourcePlatform, cleanArtist, cleanTitle, searchTerm, cached, canonicalTitle, canonicalArtist, typeHint };
 }
 
 /** Persist the auto-picked match for a platform, without clobbering a manual override. */
@@ -520,9 +536,11 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
 }
 
 export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: string): Promise<PlatformResult> {
-  const { entityId, cleanTitle, cleanArtist, searchTerm, isAlbum, cached } = ctx;
+  const { entityId, cleanTitle, cleanArtist, searchTerm, isAlbum: ctxIsAlbum, cached } = ctx;
+  let isAlbum = ctxIsAlbum;
 
   if (ctx.sourcePlatform === 'spotify' && sourceUrl) {
+    if (sourceUrl.includes('/album/')) isAlbum = true;
     const meta = await fetchSpotifyMetadata(sourceUrl);
     const existing = await sql`SELECT id FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' AND candidate_url = ${sourceUrl} LIMIT 1`;
     let candidateId = existing[0]?.id;
@@ -560,6 +578,8 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
   let matchedBy: string | null = null;
   if (result) {
     spotifyUrl = result.url;
+    if (spotifyUrl.includes('/album/')) isAlbum = true;
+    
     // Use metadata returned directly by SpotAPI to avoid ~2s HTML scraping overhead;
     // only fall back to scraping open.spotify.com if SpotAPI didn't return thumbnail
     const meta = (result.title || result.thumbnail_url)

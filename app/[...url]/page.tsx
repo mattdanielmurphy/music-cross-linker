@@ -88,6 +88,15 @@ export default async function Page({
     return <TrackView artist="" track={urlSegments[0]} searchParams={resolvedSearchParams} />;
   } else if (urlSegments.length === 2) {
     return <TrackView artist={urlSegments[0]} track={urlSegments[1]} searchParams={resolvedSearchParams} />;
+  } else if (urlSegments.length === 3 && (urlSegments[0] === 'album' || urlSegments[0] === 'track')) {
+    const typeHint = urlSegments[0] as 'album' | 'track';
+    return (
+      <TrackView 
+        artist={urlSegments[1]} 
+        track={urlSegments[2]} 
+        searchParams={{ ...resolvedSearchParams, type: typeHint }} 
+      />
+    );
   }
 
   redirect('/');

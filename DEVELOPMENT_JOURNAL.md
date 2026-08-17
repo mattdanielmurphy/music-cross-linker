@@ -20,3 +20,5 @@
 - August 12, 2026 - Hydration Mismatch Fix: Added `suppressHydrationWarning={true}` to YouTube `<iframe>` in `app/components/ResolvingRedirect.tsx` to eliminate React 19 / Next.js SSR hydration warnings. [Read Log](agent-logs/2026-08-12_18-26_fix-resolving-redirect-hydration-mismatch.md)
 
 - August 13, 2026 - Album Art Theming: Implemented `sharp`-based server-side color sampling, WCAG contrast verification, and CSS custom property dynamic theming for album pages. [Read Log](agent-logs/2026-08-13_01-42_album_art_theming.md)
+
+- August 16, 2026 - Album vs Track Resolution & Slug Normalization: Fixed slug hyphen splitting (e.g. Alive 2007), added explicit ?type=album / route prefix overrides with interactive TypeBadge toggle, consensus-based album promotion from platform matches, and canonical metadata title hydration for H1. [Read Log](agent-logs/2026-08-16_22-47_album-detection-slug-normalization.md)
