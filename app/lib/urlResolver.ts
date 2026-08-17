@@ -166,7 +166,43 @@ async function fetchAppleMusicMetadata(url: string) {
 interface SpotapiResult {
   url: string;
   confidence: Confidence;
+  title?: string | null;
+  artist?: string | null;
+  thumbnail_url?: string | null;
   isServerError?: boolean;
+}
+
+async function callSpotapiUnified(
+  baseUrl: string,
+  query: string,
+  isAlbum: boolean,
+  title?: string,
+  artist?: string
+): Promise<SpotapiResult | null> {
+  try {
+    const params = new URLSearchParams({ q: query, is_album: String(isAlbum) });
+    if (title) params.set('title', title);
+    if (artist) params.set('artist', artist);
+    const searchUrl = `${baseUrl.replace(/\/$/, '')}/api/spotify/search?${params.toString()}`;
+    const res = await fetch(searchUrl, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const data = await res.json();
+    if (!data?.url) return null;
+    return {
+      url: data.url,
+      confidence: (data.confidence as Confidence) || 'low',
+      title: data.title || null,
+      artist: data.artist || null,
+      thumbnail_url: data.thumbnail_url || null,
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 async function callSpotapiEntity(
@@ -191,7 +227,13 @@ async function callSpotapiEntity(
     }
     const data = await res.json();
     if (!data?.url) return null;
-    return { url: data.url, confidence: (data.confidence as Confidence) || 'low' };
+    return {
+      url: data.url,
+      confidence: (data.confidence as Confidence) || 'low',
+      title: data.title || null,
+      artist: data.artist || null,
+      thumbnail_url: data.thumbnail_url || null,
+    };
   } catch (e) {
     console.error('SpotAPI service fetch failed:', e);
     return { url: '', confidence: 'none', isServerError: true };
@@ -200,18 +242,10 @@ async function callSpotapiEntity(
 
 /**
  * Searches Spotify via spotapi-service (see AG_CONTEXT.md — never the
- * official Spotify Web API). `isAlbum` is only a best-effort guess upstream
- * (e.g. a YouTube URL with no /album/ or list= marker looks like a track even
- * when it's a "full album" video) — spotapi-service's search-track and
- * search-album endpoints are strictly typed and never cross-return, so a
- * wrong guess here means the correct release is never even queried (e.g. Yes's
- * single-word album "Fragile" has no matching standalone track, so a
- * track-only search confidently returns a wrong candidate while the album
- * search finds it immediately).
+ * official Spotify Web API).
  *
- * To make this robust to a wrong isAlbum guess, we try the guessed entity
- * type first and only fall back to the other type if it didn't come back
- * with a 'high' confidence match.
+ * Uses unified single-trip search by default (evaluating both tracks and albums
+ * in one GraphQL round-trip), with automatic fallback to typed endpoints.
  */
 async function searchSpotifyViaSpotapi(
   query: string,
@@ -225,6 +259,13 @@ async function searchSpotifyViaSpotapi(
     return null;
   }
 
+  // 1. Fast path: single-trip unified search (tracks + albums in 1 GraphQL call with full metadata)
+  const unified = await callSpotapiUnified(baseUrl, query, isAlbum, title, artist);
+  if (unified?.url) {
+    return unified;
+  }
+
+  // 2. Fallback path: separate entity searches
   const primaryEndpoint = isAlbum ? 'search-album' : 'search-track';
   const fallbackEndpoint = isAlbum ? 'search-track' : 'search-album';
 
@@ -240,9 +281,7 @@ async function searchSpotifyViaSpotapi(
   }
   if (fallback?.confidence === 'high') return fallback;
 
-  // Neither entity type found a confident match — prefer whichever result we
-  // have (primary guess wins ties), rather than confidently returning 'low'
-  // over nothing at all.
+  // Neither entity type found a confident match — prefer whichever result we have
   const validPrimary = primary && !primary.isServerError ? primary : null;
   const validFallback = fallback && !fallback.isServerError ? fallback : null;
   return validPrimary || validFallback || null;
@@ -521,7 +560,12 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
   let matchedBy: string | null = null;
   if (result) {
     spotifyUrl = result.url;
-    const meta = await fetchSpotifyMetadata(spotifyUrl);
+    // Use metadata returned directly by SpotAPI to avoid ~2s HTML scraping overhead;
+    // only fall back to scraping open.spotify.com if SpotAPI didn't return thumbnail
+    const meta = (result.title || result.thumbnail_url)
+      ? { title: result.title || cleanTitle, artist: result.artist || cleanArtist, thumbnail_url: result.thumbnail_url || null }
+      : await fetchSpotifyMetadata(spotifyUrl);
+
     const inserted = await sql`
       INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
       VALUES (${entityId}, 'spotify', ${spotifyUrl}, ${meta.title}, ${meta.artist}, ${meta.thumbnail_url}, 1, 'spotapi', ${confidenceToNumeric(result.confidence)})

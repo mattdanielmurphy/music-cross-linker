@@ -58,6 +58,35 @@ def _spotify_artist_names(data: dict) -> list[str]:
     return [a.get("profile", {}).get("name", "") for a in artists]
 
 
+def _extract_thumbnail(data_obj: dict) -> str | None:
+    """Pulls a cover art URL out of a track or album item's data blob.
+    Tracks nest it under albumOfTrack.coverArt; albums have coverArt directly.
+    """
+    cover_art = (data_obj.get("albumOfTrack") or {}).get("coverArt") or data_obj.get("coverArt") or {}
+    sources = cover_art.get("sources", []) or []
+    if not sources:
+        return None
+    # Prefer a mid-size image (closest to 300px) over the largest/smallest.
+    best = min(sources, key=lambda s: abs((s.get("width") or 0) - 300))
+    return best.get("url")
+
+
+def _format_result(best_tier: str, best_item: dict, entity: str) -> dict:
+    item_id = _extract_id(best_item)
+    if not item_id:
+        return {"url": None}
+    data_obj = best_item.get("data", {}) or {}
+    artist_names = _spotify_artist_names(data_obj)
+    return {
+        "url": f"https://open.spotify.com/{entity}/{item_id}",
+        "confidence": best_tier,
+        "title": data_obj.get("name"),
+        "artist": ", ".join(artist_names) if artist_names else None,
+        "thumbnail_url": _extract_thumbnail(data_obj),
+        "entity": entity,
+    }
+
+
 def _classify_match(name_raw: str, artist_names_raw: list[str], norm_title: str, norm_artist: str) -> tuple[str, float]:
     name = _normalize(name_raw)
     artist_names = [_normalize(a) for a in artist_names_raw]
@@ -102,13 +131,7 @@ def _classify_match(name_raw: str, artist_names_raw: list[str], norm_title: str,
 
 
 def _search_spotify(q: str, entity: str, title: str = "", artist: str = "") -> dict:
-    """entity is either 'track' or 'album'. Never returns the other type.
-
-    Returns {"url": None} if nothing plausible is found — we'd rather report
-    no match than confidently show a wrong one. Returns {"url": ..., "confidence":
-    "high"|"low"} otherwise; "low" means the match is uncertain and should be
-    flagged as possibly wrong in the UI.
-    """
+    """entity is either 'track' or 'album'. Never returns the other type."""
     norm_title = _normalize(title)
     norm_artist = _normalize(artist)
 
@@ -138,22 +161,8 @@ def _search_spotify(q: str, entity: str, title: str = "", artist: str = "") -> d
 
         client = client_pool.get()
         try:
-            # Ask for more than the default (10) results — Spotify's own search
-            # relevance for a combined "artist title" query can rank a correct
-            # but non-plain release (e.g. a deluxe reissue that's the *only*
-            # version on Spotify) below more generically-popular same-titled
-            # albums by other artists. A wider window makes it much more
-            # likely the right-artist release is actually seen and considered.
             candidates = _classify_items(_fetch_items(q, limit=25))
 
-            # If nothing scored 'high' yet, and we have a distinct title to search
-            # on its own, try a title-only query too and merge in any extra
-            # candidates it turns up. This catches cases where the combined
-            # "artist title" query's relevance buries the correct release
-            # entirely outside even a widened window. Wrong-artist candidates
-            # from this broader query still get classified normally (at best
-            # 'low'), so this can only help find the right release, not
-            # demote the artist-match requirement for 'high'.
             has_high = any(c[0] == "high" for c in candidates)
             if not has_high and title and _normalize(title) and title.strip().lower() != q.strip().lower():
                 extra = _classify_items(_fetch_items(title, limit=25))
@@ -165,19 +174,83 @@ def _search_spotify(q: str, entity: str, title: str = "", artist: str = "") -> d
             if not candidates:
                 return {"url": None}
 
-            # Prefer 'high' tier over 'low' tier; within a tier, highest score wins.
             candidates.sort(key=lambda c: (c[0] == "high", c[1]), reverse=True)
             best_tier, _, best_item = candidates[0]
-
-            item_id = _extract_id(best_item)
-            if item_id:
-                return {"url": f"https://open.spotify.com/{entity}/{item_id}", "confidence": best_tier}
+            return _format_result(best_tier, best_item, entity)
         finally:
             client_pool.put(client)
     except Exception as e:
         logging.error(f"Error searching spotapi ({entity}): {e}")
 
     return {"url": None}
+
+
+def _search_spotify_unified(q: str, is_album: bool = False, title: str = "", artist: str = "") -> dict:
+    """Unified search: queries Spotify GraphQL once, evaluating both tracks and albums
+    simultaneously in a single round trip.
+    """
+    norm_title = _normalize(title)
+    norm_artist = _normalize(artist)
+
+    def _classify_list(items: list, entity: str) -> list:
+        out = []
+        for it in items:
+            item = it.get("item", {}) or it.get("itemV2", {}) or it
+            data_obj = item.get("data", {}) or {}
+            tier, score = _classify_match(
+                data_obj.get("name", ""), _spotify_artist_names(data_obj), norm_title, norm_artist
+            )
+            if tier == "none":
+                continue
+            # Prefer guessed entity type slightly on score ties
+            type_bonus = 3.0 if (entity == "album" if is_album else entity == "track") else 0.0
+            out.append((tier, score + type_bonus, item, entity))
+        return out
+
+    try:
+        from spotapi.song import Song
+        from spotapi.public import client_pool
+
+        client = client_pool.get()
+        try:
+            s = Song(client=client)
+            data = s.query_songs(q, limit=25)
+            search_v2 = data.get("data", {}).get("searchV2", {}) or {}
+            track_items = search_v2.get("tracksV2", {}).get("items", []) or []
+            album_items = search_v2.get("albumsV2", {}).get("items", []) or []
+
+            candidates = _classify_list(track_items, "track") + _classify_list(album_items, "album")
+
+            has_high = any(c[0] == "high" for c in candidates)
+            if not has_high and title and _normalize(title) and title.strip().lower() != q.strip().lower():
+                data_title = s.query_songs(title, limit=25)
+                search_v2_t = data_title.get("data", {}).get("searchV2", {}) or {}
+                track_items_t = search_v2_t.get("tracksV2", {}).get("items", []) or []
+                album_items_t = search_v2_t.get("albumsV2", {}).get("items", []) or []
+                extra = _classify_list(track_items_t, "track") + _classify_list(album_items_t, "album")
+                seen_ids = {_extract_id(c[2]) for c in candidates}
+                for c in extra:
+                    if _extract_id(c[2]) not in seen_ids:
+                        candidates.append(c)
+
+            if not candidates:
+                return {"url": None}
+
+            candidates.sort(key=lambda c: (c[0] == "high", c[1]), reverse=True)
+            best_tier, _, best_item, best_entity = candidates[0]
+            return _format_result(best_tier, best_item, best_entity)
+        finally:
+            client_pool.put(client)
+    except Exception as e:
+        logging.error(f"Error searching spotapi (unified): {e}")
+
+    return {"url": None}
+
+
+@app.get("/api/spotify/search")
+def search_spotify_unified_endpoint(q: str, is_album: bool = False, title: str = "", artist: str = ""):
+    """Unified single-trip Spotify search evaluating both tracks and albums."""
+    return _search_spotify_unified(q, is_album=is_album, title=title, artist=artist)
 
 
 @app.get("/api/spotify/search-track")
@@ -190,19 +263,6 @@ def search_spotify_track(q: str, title: str = "", artist: str = ""):
 def search_spotify_album(q: str, title: str = "", artist: str = ""):
     """Search Spotify for an album match only. Never returns a track."""
     return _search_spotify(q, "album", title=title, artist=artist)
-
-
-def _extract_thumbnail(data_obj: dict) -> str | None:
-    """Pulls a cover art URL out of a track or album item's data blob.
-    Tracks nest it under albumOfTrack.coverArt; albums have coverArt directly.
-    """
-    cover_art = (data_obj.get("albumOfTrack") or {}).get("coverArt") or data_obj.get("coverArt") or {}
-    sources = cover_art.get("sources", []) or []
-    if not sources:
-        return None
-    # Prefer a mid-size image (closest to 300px) over the largest/smallest.
-    best = min(sources, key=lambda s: abs((s.get("width") or 0) - 300))
-    return best.get("url")
 
 
 def _item_to_candidate(item: dict, entity: str) -> dict | None:
@@ -222,12 +282,7 @@ def _item_to_candidate(item: dict, entity: str) -> dict | None:
 
 @app.get("/api/spotify/search-candidates")
 def search_spotify_candidates(q: str, limit: int = 10):
-    """Returns a flat list of Spotify track + album candidates (title, artist,
-    thumbnail_url, candidate_url) for manual re-search UIs — unlike
-    search-track/search-album, this does NOT filter or rank by confidence; it
-    just surfaces Spotify's own top results verbatim so a human can pick.
-    Interleaves tracks and albums so both types are represented.
-    """
+    """Returns a flat list of Spotify track + album candidates for manual re-search."""
     try:
         from spotapi.song import Song
         from spotapi.public import client_pool
