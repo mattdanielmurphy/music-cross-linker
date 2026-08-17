@@ -1,4 +1,5 @@
 import re
+import time
 import logging
 import difflib
 from itertools import zip_longest
@@ -6,6 +7,28 @@ from fastapi import FastAPI
 
 app = FastAPI()
 logging.basicConfig(level=logging.INFO)
+
+# In-memory query cache with TTL (1 hour)
+_CACHE = {}
+_CACHE_TTL = 3600  # seconds
+_MAX_CACHE_SIZE = 2000
+
+
+def _get_cached(key: str) -> dict | None:
+    if key in _CACHE:
+        val, ts = _CACHE[key]
+        if time.time() - ts < _CACHE_TTL:
+            return val
+        del _CACHE[key]
+    return None
+
+
+def _set_cached(key: str, val: dict):
+    if len(_CACHE) >= _MAX_CACHE_SIZE:
+        oldest = sorted(_CACHE.keys(), key=lambda k: _CACHE[k][1])[: int(_MAX_CACHE_SIZE * 0.2)]
+        for k in oldest:
+            _CACHE.pop(k, None)
+    _CACHE[key] = (val, time.time())
 
 
 # Reissue/edition descriptors that shouldn't prevent a title from counting as
@@ -31,6 +54,7 @@ def _normalize(s: str) -> str:
     s = re.sub(r"[^a-z0-9]+", " ", s).strip()  # strip punctuation
     s = re.sub(r"^(the|a|an)\s+", "", s)  # strip leading articles
     return s.strip()
+
 
 def _normalize_with_articles(s: str) -> str:
     if not s:
@@ -132,6 +156,11 @@ def _classify_match(name_raw: str, artist_names_raw: list[str], norm_title: str,
 
 def _search_spotify(q: str, entity: str, title: str = "", artist: str = "") -> dict:
     """entity is either 'track' or 'album'. Never returns the other type."""
+    cache_key = f"typed:{entity}:{q.lower().strip()}:{title.lower().strip()}:{artist.lower().strip()}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     norm_title = _normalize(title)
     norm_artist = _normalize(artist)
 
@@ -172,11 +201,15 @@ def _search_spotify(q: str, entity: str, title: str = "", artist: str = "") -> d
                         candidates.append(c)
 
             if not candidates:
-                return {"url": None}
+                res = {"url": None}
+                _set_cached(cache_key, res)
+                return res
 
             candidates.sort(key=lambda c: (c[0] == "high", c[1]), reverse=True)
             best_tier, _, best_item = candidates[0]
-            return _format_result(best_tier, best_item, entity)
+            res = _format_result(best_tier, best_item, entity)
+            _set_cached(cache_key, res)
+            return res
         finally:
             client_pool.put(client)
     except Exception as e:
@@ -187,8 +220,13 @@ def _search_spotify(q: str, entity: str, title: str = "", artist: str = "") -> d
 
 def _search_spotify_unified(q: str, is_album: bool = False, title: str = "", artist: str = "") -> dict:
     """Unified search: queries Spotify GraphQL once, evaluating both tracks and albums
-    simultaneously in a single round trip.
+    simultaneously in a single round trip with in-memory caching.
     """
+    cache_key = f"unified:{is_album}:{q.lower().strip()}:{title.lower().strip()}:{artist.lower().strip()}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     norm_title = _normalize(title)
     norm_artist = _normalize(artist)
 
@@ -234,11 +272,15 @@ def _search_spotify_unified(q: str, is_album: bool = False, title: str = "", art
                         candidates.append(c)
 
             if not candidates:
-                return {"url": None}
+                res = {"url": None}
+                _set_cached(cache_key, res)
+                return res
 
             candidates.sort(key=lambda c: (c[0] == "high", c[1]), reverse=True)
             best_tier, _, best_item, best_entity = candidates[0]
-            return _format_result(best_tier, best_item, best_entity)
+            res = _format_result(best_tier, best_item, best_entity)
+            _set_cached(cache_key, res)
+            return res
         finally:
             client_pool.put(client)
     except Exception as e:
@@ -283,6 +325,11 @@ def _item_to_candidate(item: dict, entity: str) -> dict | None:
 @app.get("/api/spotify/search-candidates")
 def search_spotify_candidates(q: str, limit: int = 10):
     """Returns a flat list of Spotify track + album candidates for manual re-search."""
+    cache_key = f"candidates:{q.lower().strip()}:{limit}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         from spotapi.song import Song
         from spotapi.public import client_pool
@@ -308,7 +355,9 @@ def search_spotify_candidates(q: str, limit: int = 10):
                     if c:
                         candidates.append(c)
 
-            return {"success": True, "candidates": candidates[:limit]}
+            res = {"success": True, "candidates": candidates[:limit]}
+            _set_cached(cache_key, res)
+            return res
         finally:
             client_pool.put(client)
     except Exception as e:
