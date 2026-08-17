@@ -77,8 +77,7 @@ resolveEntity(artist, title, country, sourceUrl) → EntityContext
 ## Spotify search — `spotapi-service`
 
 **Endpoint config:** `SPOTAPI_URL` env var (currently
-`https://oracle-vps.tail491454.ts.net`, a Tailscale-only address — the VPS
-FastAPI service, not reachable from the public internet).
+`https://vps.mattmurphy.ca`, reaching the VPS FastAPI service via Caddy reverse proxy).
 
 **Service:** `spotapi-service/main.py`, using the `spotapi` PyPI package
 (unofficial client for Spotify's own web-player GraphQL API — no API key, no
