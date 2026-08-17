@@ -404,6 +404,8 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
       const inserted = await sql`
         INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
         VALUES (${entityId}, 'apple_music', ${sourceUrl}, ${meta.title}, ${meta.artist}, ${meta.thumbnail_url}, 1, 'explicit', 1)
+        ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
+          SET title = EXCLUDED.title, artist = EXCLUDED.artist, thumbnail_url = EXCLUDED.thumbnail_url, rank = 1, source = 'explicit', confidence = 1
         RETURNING id
       `;
       candidateId = inserted[0].id;
@@ -446,6 +448,8 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
         const insertedRow = await sql`
           INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
           VALUES (${entityId}, 'apple_music', ${candidateUrl}, ${candTitle}, ${r.artistName}, ${r.artworkUrl100}, ${rank}, 'itunes_api', ${confidenceToNumeric(confidence)})
+          ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
+            SET title = EXCLUDED.title, artist = EXCLUDED.artist, thumbnail_url = EXCLUDED.thumbnail_url, rank = EXCLUDED.rank, source = EXCLUDED.source, confidence = EXCLUDED.confidence
           RETURNING id
         `;
         if (confidence === 'high' && bestConfidence !== 'high') {
@@ -466,6 +470,7 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
     await sql`
       INSERT INTO match_candidates (entity_id, platform, candidate_url, rank, source, confidence)
       VALUES (${entityId}, 'apple_music', ${appleUrl}, 0, 'apple_fallback', null)
+      ON CONFLICT (entity_id, platform, candidate_url) DO NOTHING
     `;
   } else {
     await saveAutoMatch(entityId, 'apple_music', appleUrl, bestCandidateId);
@@ -486,6 +491,8 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
       const inserted = await sql`
         INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
         VALUES (${entityId}, 'spotify', ${sourceUrl}, ${meta.title}, ${meta.artist}, ${meta.thumbnail_url}, 1, 'explicit', 1)
+        ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
+          SET title = EXCLUDED.title, artist = EXCLUDED.artist, thumbnail_url = EXCLUDED.thumbnail_url, rank = 1, source = 'explicit', confidence = 1
         RETURNING id
       `;
       candidateId = inserted[0].id;
@@ -518,6 +525,8 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
     const inserted = await sql`
       INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
       VALUES (${entityId}, 'spotify', ${spotifyUrl}, ${meta.title}, ${meta.artist}, ${meta.thumbnail_url}, 1, 'spotapi', ${confidenceToNumeric(result.confidence)})
+      ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
+        SET title = EXCLUDED.title, artist = EXCLUDED.artist, thumbnail_url = EXCLUDED.thumbnail_url, rank = EXCLUDED.rank, source = EXCLUDED.source, confidence = EXCLUDED.confidence
       RETURNING id
     `;
     if (result.confidence !== 'none') {
@@ -530,6 +539,7 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
     await sql`
       INSERT INTO match_candidates (entity_id, platform, candidate_url, rank, source, confidence)
       VALUES (${entityId}, 'spotify', ${spotifyUrl}, 0, 'spotify_fallback', null)
+      ON CONFLICT (entity_id, platform, candidate_url) DO NOTHING
     `;
   }
 
@@ -553,6 +563,8 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
       const inserted = await sql`
         INSERT INTO match_candidates (entity_id, platform, candidate_url, title, thumbnail_url, rank, source, confidence)
         VALUES (${entityId}, 'youtube', ${sourceUrl}, ${yTitle}, ${yThumbnail}, 1, 'explicit', 1)
+        ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
+          SET title = EXCLUDED.title, thumbnail_url = EXCLUDED.thumbnail_url, rank = 1, source = 'explicit', confidence = 1
         RETURNING id
       `;
       candidateId = inserted[0].id;
@@ -598,6 +610,8 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
         const inserted = await sql`
           INSERT INTO match_candidates (entity_id, platform, candidate_url, title, thumbnail_url, rank, source, confidence)
           VALUES (${entityId}, 'youtube', ${candidateUrl}, ${yTitle}, ${yThumbnail}, 1, 'youtube_ducky', ${confidenceToNumeric(confidence)})
+          ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
+            SET title = EXCLUDED.title, thumbnail_url = EXCLUDED.thumbnail_url, rank = EXCLUDED.rank, source = EXCLUDED.source, confidence = EXCLUDED.confidence
           RETURNING id
         `;
 
@@ -614,6 +628,7 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
     await sql`
       INSERT INTO match_candidates (entity_id, platform, candidate_url, rank, source, confidence)
       VALUES (${entityId}, 'youtube', ${youtubeUrl}, 0, 'youtube_fallback', null)
+      ON CONFLICT (entity_id, platform, candidate_url) DO NOTHING
     `;
   }
 
