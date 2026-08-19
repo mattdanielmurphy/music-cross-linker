@@ -11,6 +11,7 @@ import {
   formatSlug,
   parseMusicTitle,
   extractVideoId,
+  parseSpotifyTitle,
 } from './titleParser';
 
 describe('YouTube title parsing', () => {
@@ -162,5 +163,59 @@ describe('Page Title & Share Metadata Formatting', () => {
     expect(extractVideoId('https://youtu.be/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
     expect(extractVideoId('https://www.youtube.com/embed/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
     expect(extractVideoId('https://www.youtube.com/shorts/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+  });
+});
+
+describe('Spotify title parsing & cleaning', () => {
+  it('parses Spotify album titles into clean title and artist', () => {
+    expect(parseSpotifyTitle('Belladonna - Album by Daniel Lanois | Spotify')).toEqual({
+      title: 'Belladonna',
+      artist: 'Daniel Lanois',
+      type: 'album',
+    });
+    expect(parseSpotifyTitle('Selected Ambient Works 85-92 - Album by Aphex Twin | Spotify')).toEqual({
+      title: 'Selected Ambient Works 85-92',
+      artist: 'Aphex Twin',
+      type: 'album',
+    });
+    expect(parseSpotifyTitle('1 (Remastered) - Compilation by The Beatles | Spotify')).toEqual({
+      title: '1 (Remastered)',
+      artist: 'The Beatles',
+      type: 'compilation',
+    });
+    expect(parseSpotifyTitle('Stay - Single by The Kid LAROI, Justin Bieber | Spotify')).toEqual({
+      title: 'Stay',
+      artist: 'The Kid LAROI, Justin Bieber',
+      type: 'single',
+    });
+  });
+
+  it('parses Spotify song titles into clean title and artist', () => {
+    expect(parseSpotifyTitle('Never Gonna Give You Up - song and lyrics by Rick Astley | Spotify')).toEqual({
+      title: 'Never Gonna Give You Up',
+      artist: 'Rick Astley',
+      type: 'track',
+    });
+    expect(parseSpotifyTitle('Shape of You - song by Ed Sheeran | Spotify')).toEqual({
+      title: 'Shape of You',
+      artist: 'Ed Sheeran',
+      type: 'track',
+    });
+  });
+
+  it('cleans Spotify title string with cleanYouTubeTitle', () => {
+    expect(cleanYouTubeTitle('Belladonna - Album by Daniel Lanois | Spotify')).toBe('Belladonna');
+    expect(cleanYouTubeTitle('Never Gonna Give You Up - song and lyrics by Rick Astley | Spotify')).toBe(
+      'Never Gonna Give You Up'
+    );
+    expect(cleanYouTubeTitle('Rock - Album by Tiny Tim | Spotify')).toBe('Rock');
+  });
+
+  it('parses Spotify titles via parseMusicTitle', () => {
+    expect(parseMusicTitle('Belladonna - Album by Daniel Lanois | Spotify')).toEqual({
+      primary: 'Daniel Lanois',
+      secondary: 'Belladonna',
+      year: null,
+    });
   });
 });

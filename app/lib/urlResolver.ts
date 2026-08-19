@@ -1,6 +1,6 @@
 import sql from './db';
 import * as cheerio from 'cheerio';
-import { cleanYouTubeTitle, parseYouTubeTitle } from './youtube/titleParser';
+import { cleanYouTubeTitle, parseYouTubeTitle, parseSpotifyTitle } from './youtube/titleParser';
 import { getTopVideos } from './youtube';
 
 // ---------------------------------------------------------------------------
@@ -124,21 +124,56 @@ function confidenceToNumeric(c: Confidence): number | null {
   return null;
 }
 
-async function fetchSpotifyMetadata(url: string) {
+export async function fetchSpotifyMetadata(url: string) {
   try {
-    const html = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.text());
+    const html = await fetch(url, { 
+      headers: { 'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)' } 
+    }).then(r => r.text());
     const $ = cheerio.load(html);
-    const title = $('meta[property="og:title"]').attr('content') || null;
-    const description = $('meta[property="og:description"]').attr('content') || '';
-    const thumbnail_url = $('meta[property="og:image"]').attr('content') || null;
+    const rawTitle = $('meta[property="og:title"]').attr('content') || $('meta[name="twitter:title"]').attr('content') || $('title').text() || null;
+    const description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || '';
+    const thumbnail_url = $('meta[property="og:image"]').attr('content') || $('meta[name="twitter:image"]').attr('content') || null;
 
-    let artist = null;
-    const parts = description.split('·').map(s => s.trim());
-    if (parts.length > 1) {
-      artist = parts[0];
+    let title: string | null = null;
+    let artist: string | null = $('meta[name="music:musician_description"]').attr('content') || null;
+
+    // 1. Check LD+JSON for exact structured data
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const text = $(el).html();
+        if (text) {
+          const data = JSON.parse(text);
+          if (data.name && !title) title = data.name;
+          if (data.byArtist?.name && !artist) artist = data.byArtist.name;
+          if (Array.isArray(data.byArtist) && data.byArtist[0]?.name && !artist) {
+            artist = data.byArtist.map((a: any) => a.name).join(', ');
+          }
+        }
+      } catch {}
+    });
+
+    // 2. Parse raw title if needed
+    if (rawTitle) {
+      const parsed = parseSpotifyTitle(rawTitle);
+      if (!title) title = parsed.title;
+      if (!artist && parsed.artist) artist = parsed.artist;
     }
 
-    return { title, artist, thumbnail_url };
+    // 3. Fallback artist from og:description (e.g. "Daniel Lanois · album · 2005 · 13 songs" or "Rick Astley · Whenever You Need Somebody · Song · 1987")
+    if (!artist && description) {
+      const parts = description.split('·').map(s => s.trim());
+      if (parts.length > 1) {
+        artist = parts[0];
+      }
+    }
+
+    const cleanT = title ? cleanYouTubeTitle(title) : (rawTitle ? parseSpotifyTitle(rawTitle).title : null);
+
+    return { 
+      title: cleanT || null, 
+      artist: artist ? artist.trim() : null, 
+      thumbnail_url: thumbnail_url || null 
+    };
   } catch (e) {
     return { title: null, artist: null, thumbnail_url: null };
   }
@@ -415,8 +450,9 @@ export async function resolveEntity(
 
     const canonical = await sql`SELECT title, artist FROM match_candidates WHERE entity_id = ${entityId} AND title IS NOT NULL AND confidence = 1 ORDER BY rank ASC LIMIT 1`;
     if (canonical[0]) {
-      canonicalTitle = canonical[0].title;
-      canonicalArtist = canonical[0].artist;
+      const parsed = parseSpotifyTitle(canonical[0].title);
+      canonicalTitle = parsed.title ? cleanYouTubeTitle(parsed.title) : cleanYouTubeTitle(canonical[0].title);
+      canonicalArtist = canonical[0].artist || (parsed.artist ? parsed.artist : canonical[0].artist);
     }
 
     if (!typeHint) {
@@ -493,13 +529,13 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
       ON CONFLICT (entity_id, platform) DO UPDATE
         SET matched_url = EXCLUDED.matched_url, matched_by = 'auto', candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
     `;
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY rank ASC`;
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
   }
 
   // Cache hit — reuse the previously auto/manually matched link for this entity.
   if (cached.apple_music) {
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY rank ASC`;
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     return { url: cached.apple_music.url, matchedBy: cached.apple_music.matched_by, candidates, uncertain: cached.apple_music.url === sourceUrl || cached.apple_music.matched_by === 'explicit' ? false : cached.apple_music.uncertain };
   }
 
@@ -549,7 +585,7 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
     await saveAutoMatch(entityId, 'apple_music', appleUrl, bestCandidateId);
   }
 
-  const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY rank ASC`;
+  const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY confidence DESC NULLS LAST, rank ASC`;
   return { url: appleUrl, matchedBy: bestConfidence === 'none' ? null : 'auto', candidates };
 }
 
@@ -559,7 +595,13 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
 
   if (ctx.sourcePlatform === 'spotify' && sourceUrl) {
     if (sourceUrl.includes('/album/')) isAlbum = true;
-    const meta = await fetchSpotifyMetadata(sourceUrl);
+    const rawMeta = await fetchSpotifyMetadata(sourceUrl);
+    const parsed = parseSpotifyTitle(rawMeta.title || '');
+    const meta = {
+      title: parsed.title ? cleanYouTubeTitle(parsed.title) : rawMeta.title,
+      artist: rawMeta.artist || parsed.artist || null,
+      thumbnail_url: rawMeta.thumbnail_url,
+    };
     const existing = await sql`SELECT id FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' AND candidate_url = ${sourceUrl} LIMIT 1`;
     let candidateId = existing[0]?.id;
     if (!candidateId) {
@@ -582,12 +624,12 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
       ON CONFLICT (entity_id, platform) DO UPDATE
         SET matched_url = EXCLUDED.matched_url, matched_by = 'auto', candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
     `;
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY rank ASC`;
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
   }
 
   if (cached.spotify) {
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY rank ASC`;
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     return { url: cached.spotify.url, matchedBy: cached.spotify.matched_by, candidates, uncertain: cached.spotify.url === sourceUrl || cached.spotify.matched_by === 'explicit' ? false : cached.spotify.uncertain };
   }
 
@@ -600,9 +642,15 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
     
     // Use metadata returned directly by SpotAPI to avoid ~2s HTML scraping overhead;
     // only fall back to scraping open.spotify.com if SpotAPI didn't return thumbnail
-    const meta = (result.title || result.thumbnail_url)
+    const rawMeta = (result.title || result.thumbnail_url)
       ? { title: result.title || cleanTitle, artist: result.artist || cleanArtist, thumbnail_url: result.thumbnail_url || null }
       : await fetchSpotifyMetadata(spotifyUrl);
+    const parsed = parseSpotifyTitle(rawMeta.title || '');
+    const meta = {
+      title: parsed.title ? cleanYouTubeTitle(parsed.title) : rawMeta.title,
+      artist: rawMeta.artist || parsed.artist || null,
+      thumbnail_url: rawMeta.thumbnail_url,
+    };
 
     const inserted = await sql`
       INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
@@ -625,7 +673,7 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
     `;
   }
 
-  const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY rank ASC`;
+  const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY confidence DESC NULLS LAST, rank ASC`;
   return { url: spotifyUrl, matchedBy, candidates };
 }
 
@@ -650,12 +698,12 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
       `;
     }
     await saveAutoMatch(entityId, 'youtube', sourceUrl, candidateId);
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY rank ASC`;
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
   }
 
   if (cached.youtube) {
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY rank ASC`;
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     return { url: cached.youtube.url, matchedBy: cached.youtube.matched_by, candidates };
   }
 
@@ -692,10 +740,10 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
 
   if (bestUrl) {
     await saveAutoMatch(entityId, 'youtube', bestUrl, bestCandidateId);
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY rank ASC`;
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     return { url: bestUrl, matchedBy: 'auto', candidates };
   } else {
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY rank ASC`;
+    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     return { url: '', matchedBy: null, candidates };
   }
 }

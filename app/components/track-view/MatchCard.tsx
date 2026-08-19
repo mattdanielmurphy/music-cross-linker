@@ -1,12 +1,8 @@
 import React from 'react';
 import { IconCheck } from '@tabler/icons-react';
+import { cleanYouTubeTitle } from '../../lib/youtube/titleParser';
 
-// Strips noisy suffixes some sources leave on the raw title, e.g. Spotify
-// oEmbed titles like "Rock - Album by Tiny Tim | Spotify" — same cleanup
-// PlatformButton already does for the active match, applied here too so
-// candidate cards in the "Not Right?" list look consistent.
-const cleanTitle = (title: string | null | undefined) =>
-  title?.split(' - Album by ')[0]?.split(' | Spotify')[0] ?? '';
+const cleanTitle = (title: string | null | undefined) => (title ? cleanYouTubeTitle(title) : '');
 
 export default function MatchCard({ candidate, onSelect, isSelected }: any) {
   return (

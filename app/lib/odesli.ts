@@ -1,3 +1,5 @@
+import { fetchSpotifyMetadata } from './urlResolver';
+
 export interface OdesliResult {
   title?: string;
   artistName?: string;
@@ -42,6 +44,26 @@ export async function fetchOdesliByUrl(sourceUrl: string): Promise<OdesliResult 
       }
     } catch (e) {
       console.error('Apple Music lookup error:', e);
+    }
+  }
+
+  // 2. Direct Spotify lookup
+  if (sourceUrl.includes('spotify.com')) {
+    try {
+      const meta = await fetchSpotifyMetadata(sourceUrl);
+      if (meta && meta.title) {
+        const isAlbum = sourceUrl.includes('/album/');
+        return {
+          title: meta.title,
+          artistName: meta.artist || undefined,
+          thumbnailUrl: meta.thumbnail_url || undefined,
+          type: isAlbum ? 'album' : 'track',
+          spotifyUrl: sourceUrl,
+          originalUrl: sourceUrl,
+        };
+      }
+    } catch (e) {
+      console.error('Spotify metadata lookup error:', e);
     }
   }
 

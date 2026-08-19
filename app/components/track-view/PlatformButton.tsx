@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { IconAlertTriangle, IconCheck } from '@tabler/icons-react';
 import CandidateList from './CandidateList';
 
+import { cleanYouTubeTitle } from '../../lib/youtube/titleParser';
 import { SiSpotify, SiApple } from 'react-icons/si';
 
 const ICONS: Record<string, any> = {
@@ -10,7 +11,7 @@ const ICONS: Record<string, any> = {
   apple_music: SiApple,
 };
 
-const cleanTitle = (title: string | null | undefined) => title?.split(' - Album by ')[0] ?? '';
+const cleanTitle = (title: string | null | undefined) => (title ? cleanYouTubeTitle(title) : '');
 const isNoMatch = (c: any) => !c || (typeof c.source === 'string' && c.source.endsWith('_fallback'));
 const isLowConfidence = (c: any) => c && c.confidence != null && Number(c.confidence) < 1 && !isNoMatch(c);
 

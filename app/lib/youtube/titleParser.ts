@@ -62,15 +62,77 @@ export function repairUnmatchedBrackets(text: string): string {
   return cleaned.replace(/[(\[]+$/, '').trim();
 }
 
+export function parseSpotifyTitle(raw: string): {
+  title: string;
+  artist: string | null;
+  type: 'album' | 'single' | 'ep' | 'compilation' | 'track' | null;
+} {
+  let cleaned = decodeHtmlEntities(raw || '').trim();
+  cleaned = cleaned.replace(/\s*\|\s*Spotify$/i, '').trim();
+
+  // Pattern 1: "<Title> - (Album|Single|EP|Compilation) by <Artist>"
+  const albumTypeMatch = cleaned.match(/^(.*?)\s*[-–—]\s*(album|single|ep|compilation)\s+by\s+(.*)$/i);
+  if (albumTypeMatch) {
+    const rawType = albumTypeMatch[2].toLowerCase();
+    const type = (rawType === 'album' || rawType === 'single' || rawType === 'ep' || rawType === 'compilation')
+      ? rawType
+      : 'album';
+    return {
+      title: albumTypeMatch[1].trim(),
+      artist: albumTypeMatch[3].trim(),
+      type,
+    };
+  }
+
+  // Pattern 2: "<Title> - song (and lyrics)? by <Artist>" or "<Title> - track by <Artist>"
+  const songMatch = cleaned.match(/^(.*?)\s*[-–—]\s*(?:song(?:\s+and\s+lyrics)?|track)\s+by\s+(.*)$/i);
+  if (songMatch) {
+    return {
+      title: songMatch[1].trim(),
+      artist: songMatch[2].trim(),
+      type: 'track',
+    };
+  }
+
+  // Pattern 3: "<Title> by <Artist>"
+  const byMatch = cleaned.match(/^(.*?)\s+by\s+(.*)$/i);
+  if (byMatch) {
+    return {
+      title: byMatch[1].trim(),
+      artist: byMatch[2].trim(),
+      type: null,
+    };
+  }
+
+  return {
+    title: cleaned,
+    artist: null,
+    type: null,
+  };
+}
+
 export function cleanYouTubeTitle(raw: string): string {
-  let cleaned = decodeHtmlEntities(raw);
+  let cleaned = decodeHtmlEntities(raw || '');
   cleaned = normalizeBrackets(cleaned);
   cleaned = stripNoiseTags(cleaned);
   cleaned = repairUnmatchedBrackets(cleaned);
+  if (cleaned.includes('Spotify') || /[-–—]\s*(?:album|single|ep|compilation|song|track)\s+by/i.test(cleaned)) {
+    cleaned = parseSpotifyTitle(cleaned).title;
+  }
   return cleaned.replace(/^[-|:,]\s*/, '').replace(/\s*[-|:,]$/, '').trim();
 }
 
 export function parseYouTubeTitle(rawTitle: string, channelName?: string): { artist: string | null; title: string } {
+  if (rawTitle && (rawTitle.includes('Spotify') || /[-–—]\s*(?:album|single|ep|compilation|song|track)\s+by/i.test(rawTitle))) {
+    const spotify = parseSpotifyTitle(rawTitle);
+    if (spotify.artist && spotify.title) {
+      return {
+        artist: spotify.artist,
+        title: cleanYouTubeTitle(spotify.title),
+      };
+    }
+  }
+
   const cleaned = cleanYouTubeTitle(rawTitle);
   let artist: string | null = null;
   let title = cleaned;
@@ -196,6 +258,17 @@ export function formatSlug(slug: string): string {
  * Returns null if no recognisable pattern found.
  */
 export function parseMusicTitle(title: string): { primary: string; secondary: string; year: string | null } | null {
+  if (title && (title.includes('Spotify') || /[-–—]\s*(?:album|single|ep|compilation|song|track)\s+by/i.test(title))) {
+    const spotify = parseSpotifyTitle(title);
+    if (spotify.artist && spotify.title) {
+      return {
+        primary: spotify.artist,
+        secondary: spotify.title,
+        year: null,
+      };
+    }
+  }
+
   const seps = [' - ', ' \u2013 ', ' \u2014 ', ' | ', ': ', ' ~ '];
   for (const sep of seps) {
     const idx = title.indexOf(sep);
