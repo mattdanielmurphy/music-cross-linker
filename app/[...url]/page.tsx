@@ -1,13 +1,143 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { getRecordBySlug } from '../lib/slugStore';
+import { getRecordBySlug, findRecordByTargetUrlOrVideo } from '../lib/slugStore';
 import TrackView from '../components/track-view/TrackView';
 import ResolvingRedirect from '../components/ResolvingRedirect';
+import {
+  formatSlug,
+  parseMusicTitle,
+  buildPageTitle,
+  buildPageDescription,
+} from '../lib/youtube/titleParser';
 
 const MUSIC_HOSTS = ['youtube.com', 'youtu.be', 'music.apple.com', 'spotify.com', 'soundcloud.com'];
 
 function extractVideoId(str: string): string | null {
   const m = str.match(/[?&]v=([\w-]{11})/) || str.match(/youtu\.be\/([\w-]{11})/) || str.match(/\/shorts\/([\w-]{11})/) || str.match(/\/embed\/([\w-]{11})/);
   return m ? m[1] : null;
+}
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ url: string[] }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}): Promise<Metadata> {
+  const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
+  const urlSegments = resolvedParams.url || [];
+
+  const rawJoined = urlSegments.join('/');
+  const isExternalUrl =
+    urlSegments[0] === 'https:' ||
+    urlSegments[0] === 'http:' ||
+    MUSIC_HOSTS.some((h) => rawJoined.includes(h));
+
+  if (isExternalUrl) {
+    const videoIdFromParams = typeof resolvedSearchParams.v === 'string' ? resolvedSearchParams.v : null;
+    const videoIdFromPath = extractVideoId(decodeURIComponent(rawJoined));
+    const videoId = videoIdFromParams || videoIdFromPath;
+
+    let canonicalUrl: string | null = null;
+    try {
+      let cleaned = decodeURIComponent(rawJoined).replace(/^(https?:\/*)+/i, 'https://');
+      if (!cleaned.startsWith('http')) cleaned = 'https://' + cleaned;
+      const u = new URL(cleaned);
+      if (resolvedSearchParams) {
+        for (const [k, v] of Object.entries(resolvedSearchParams)) {
+          if (v !== undefined) {
+            u.searchParams.append(k, Array.isArray(v) ? v[0] : (v as string));
+          }
+        }
+      }
+      canonicalUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : u.toString();
+    } catch {
+      if (videoId) canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    }
+
+    const record = findRecordByTargetUrlOrVideo(canonicalUrl, videoId);
+    if (record) {
+      const pageTitle = buildPageTitle(record.artistName, record.title);
+      const pageDescription = buildPageDescription(record.artistName, record.title);
+      return {
+        title: { absolute: pageTitle },
+        description: pageDescription,
+        openGraph: {
+          title: pageTitle,
+          description: pageDescription,
+          siteName: 'Multilink',
+        },
+        twitter: {
+          card: 'summary',
+          title: pageTitle,
+          description: pageDescription,
+        },
+      };
+    }
+
+    const defaultTitle = 'Multilink - Universal Music Links';
+    const defaultDesc = 'Search and cross-link tracks across YouTube, Spotify, and Apple Music.';
+    return {
+      title: { absolute: defaultTitle },
+      description: defaultDesc,
+      openGraph: {
+        title: defaultTitle,
+        description: defaultDesc,
+        siteName: 'Multilink',
+      },
+      twitter: {
+        card: 'summary',
+        title: defaultTitle,
+        description: defaultDesc,
+      },
+    };
+  }
+
+  const slugKey = urlSegments.join('/');
+  const record = getRecordBySlug(slugKey);
+
+  let artist: string | null = null;
+  let track: string | null = null;
+
+  if (record) {
+    artist = record.artistName;
+    track = record.title;
+  } else if (urlSegments.length === 3 && (urlSegments[0] === 'album' || urlSegments[0] === 'track')) {
+    artist = formatSlug(urlSegments[1]);
+    track = formatSlug(urlSegments[2]);
+  } else if (urlSegments.length === 2) {
+    artist = formatSlug(urlSegments[0]);
+    track = formatSlug(urlSegments[1]);
+  } else if (urlSegments.length === 1) {
+    const raw = urlSegments[0];
+    const parsed = parseMusicTitle(raw);
+    if (parsed) {
+      artist = parsed.primary;
+      track = parsed.secondary;
+    } else {
+      const isSlugLike = /^[a-z0-9]+(-[a-z0-9]+)*$/.test(raw);
+      track = isSlugLike ? formatSlug(raw) : raw;
+    }
+  }
+
+  const pageTitle = buildPageTitle(artist, track);
+  const pageDescription = buildPageDescription(artist, track);
+
+  return {
+    title: { absolute: pageTitle },
+    description: pageDescription,
+    openGraph: {
+      title: pageTitle,
+      description: pageDescription,
+      siteName: 'Multilink',
+    },
+    twitter: {
+      card: 'summary',
+      title: pageTitle,
+      description: pageDescription,
+    },
+  };
 }
 
 export default async function Page({ 

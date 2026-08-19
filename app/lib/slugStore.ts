@@ -111,3 +111,13 @@ export function getRecordBySlug(slug: string): SlugRecord | null {
   const store = getStore();
   return store[slug] || null;
 }
+
+export function findRecordByTargetUrlOrVideo(targetUrl?: string | null, videoId?: string | null): SlugRecord | null {
+  const store = getStore();
+  if (!targetUrl && !videoId) return null;
+  for (const record of Object.values(store)) {
+    if (targetUrl && record.targetUrl === targetUrl) return record;
+    if (videoId && record.videoId === videoId) return record;
+  }
+  return null;
+}

@@ -160,3 +160,101 @@ export async function parseYouTubeTitleHybrid(rawTitle: string, channelName?: st
 
   return parseYouTubeTitle(rawTitle, channelName);
 }
+
+/** Extract year (4-digit) from a string, return { text, year } */
+export function extractYear(s: string): { text: string; year: string | null } {
+  const m = s.match(/\s*[\(\[\-]?\s*(\d{4})\s*[\)\]]?\s*$/);
+  if (m && parseInt(m[1]) >= 1900 && parseInt(m[1]) <= 2100) {
+    return { text: s.slice(0, m.index).trim(), year: m[1] };
+  }
+  return { text: s, year: null };
+}
+
+/** Strip noise (feat., remaster, official, etc.) but NOT year (handled separately) */
+export function cleanSegment(s: string): string {
+  return s
+    .replace(/\s*(feat\.?.*|ft\.?.*|remaster(ed)?|official.*|audio.*|video.*|lyrics?)\s*$/i, '')
+    .replace(/["\u201C\u201D'\[\]]/g, '')
+    .trim();
+}
+
+/**
+ * Format a slug component (e.g. 'daniel-lanois', 'alive-2007') into title case.
+ */
+export function formatSlug(slug: string): string {
+  return decodeURIComponent(slug)
+    .split('-')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
+ * Try to split a music title into { primary, secondary, year }.
+ * Handles: "Artist - Title", "Artist: Title", "Title | Artist",
+ *          'Artist "Title" (Year)', "Artist — Title", "Artist ~ Title"
+ * Returns null if no recognisable pattern found.
+ */
+export function parseMusicTitle(title: string): { primary: string; secondary: string; year: string | null } | null {
+  const seps = [' - ', ' \u2013 ', ' \u2014 ', ' | ', ': ', ' ~ '];
+  for (const sep of seps) {
+    const idx = title.indexOf(sep);
+    if (idx > 0) {
+      const rawLeft = title.slice(0, idx);
+      const rawRight = title.slice(idx + sep.length);
+      // Extract year from whichever side has it
+      const { text: rightClean, year: rightYear } = extractYear(rawRight);
+      const { text: leftClean, year: leftYear } = extractYear(rawLeft);
+      const year = rightYear || leftYear || null;
+      const left = cleanSegment(leftClean);
+      const right = cleanSegment(rightClean);
+      if (left && right) return { primary: left, secondary: right, year };
+    }
+  }
+  // Pattern: Artist "Title" (Year) or Artist "Title"
+  const quotedMatch = title.match(/^(.+?)\s+["\u201C](.+?)["\u201D](.*)$/);
+  if (quotedMatch) {
+    const { year: remainderYear } = extractYear(quotedMatch[3] || '');
+    const { text: rightClean, year: titleYear } = extractYear(quotedMatch[2]);
+    const year = remainderYear || titleYear || null;
+    return { primary: cleanSegment(quotedMatch[1]), secondary: cleanSegment(rightClean), year };
+  }
+  return null;
+}
+
+/**
+ * Builds the page and share title in the format "Artist - Album/Track | Multilink"
+ */
+export function buildPageTitle(artist?: string | null, track?: string | null): string {
+  const cleanTrack = track ? cleanYouTubeTitle(track) : '';
+  const cleanArt = artist ? cleanYouTubeTitle(artist) : '';
+  const hasArtist = Boolean(cleanArt && cleanArt.toLowerCase() !== 'unknown artist');
+
+  if (hasArtist && cleanTrack) {
+    return `${cleanArt} - ${cleanTrack} | Multilink`;
+  }
+  if (cleanTrack) {
+    return `${cleanTrack} | Multilink`;
+  }
+  if (hasArtist) {
+    return `${cleanArt} | Multilink`;
+  }
+  return 'Multilink - Universal Music Links';
+}
+
+/**
+ * Builds the page description for OpenGraph/Twitter sharing.
+ */
+export function buildPageDescription(artist?: string | null, track?: string | null): string {
+  const cleanTrack = track ? cleanYouTubeTitle(track) : '';
+  const cleanArt = artist ? cleanYouTubeTitle(artist) : '';
+  const hasArtist = Boolean(cleanArt && cleanArt.toLowerCase() !== 'unknown artist');
+
+  if (hasArtist && cleanTrack) {
+    return `Listen to ${cleanTrack} by ${cleanArt} on YouTube, Spotify, and Apple Music.`;
+  }
+  if (cleanTrack) {
+    return `Listen to ${cleanTrack} on YouTube, Spotify, and Apple Music.`;
+  }
+  return 'Search and cross-link tracks across YouTube, Spotify, and Apple Music.';
+}

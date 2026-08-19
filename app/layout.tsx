@@ -3,8 +3,22 @@ import UrlTipFooter from './components/UrlTipFooter';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Music Cross Linker - Universal Track Links',
+  title: {
+    default: 'Multilink - Universal Music Links',
+    template: '%s | Multilink',
+  },
   description: 'Search and cross-link tracks across YouTube, Spotify, and Apple Music.',
+  openGraph: {
+    title: 'Multilink - Universal Music Links',
+    description: 'Search and cross-link tracks across YouTube, Spotify, and Apple Music.',
+    siteName: 'Multilink',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Multilink - Universal Music Links',
+    description: 'Search and cross-link tracks across YouTube, Spotify, and Apple Music.',
+  },
 };
 
 export default function RootLayout({

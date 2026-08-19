@@ -6,6 +6,10 @@ import {
   parseYouTubeTitle,
   normalizeBrackets,
   cleanYouTubeTitle,
+  buildPageTitle,
+  buildPageDescription,
+  formatSlug,
+  parseMusicTitle,
 } from './titleParser';
 
 describe('YouTube title parsing', () => {
@@ -89,5 +93,66 @@ describe('YouTube title parsing', () => {
     expect(cleanYouTubeTitle('Artist - Title Full album')).toBe(
       'Artist - Title'
     );
+  });
+});
+
+describe('Page Title & Share Metadata Formatting', () => {
+  it('formats artist and track title as "Artist - Title | Multilink"', () => {
+    expect(buildPageTitle('Daniel Lanois', 'Belladonna')).toBe(
+      'Daniel Lanois - Belladonna | Multilink'
+    );
+    expect(buildPageTitle('Daft Punk', 'Alive 2007')).toBe(
+      'Daft Punk - Alive 2007 | Multilink'
+    );
+    expect(buildPageTitle('Pink Floyd', 'Dark Side of the Moon')).toBe(
+      'Pink Floyd - Dark Side of the Moon | Multilink'
+    );
+  });
+
+  it('strips noise tags from title before building page title', () => {
+    expect(
+      buildPageTitle('Led Zeppelin', 'Physical Graffiti (Full Album) [Official Video]')
+    ).toBe('Led Zeppelin - Physical Graffiti | Multilink');
+  });
+
+  it('handles single item / missing artist as "Title | Multilink"', () => {
+    expect(buildPageTitle(null, 'Belladonna')).toBe('Belladonna | Multilink');
+    expect(buildPageTitle('', 'Alive 2007')).toBe('Alive 2007 | Multilink');
+    expect(buildPageTitle('Unknown Artist', 'Belladonna')).toBe(
+      'Belladonna | Multilink'
+    );
+  });
+
+  it('formats page description for single item and artist-track', () => {
+    expect(buildPageDescription('Daniel Lanois', 'Belladonna')).toBe(
+      'Listen to Belladonna by Daniel Lanois on YouTube, Spotify, and Apple Music.'
+    );
+    expect(buildPageDescription(null, 'Belladonna')).toBe(
+      'Listen to Belladonna on YouTube, Spotify, and Apple Music.'
+    );
+  });
+
+  it('formats slug components into capitalized words', () => {
+    expect(formatSlug('daniel-lanois')).toBe('Daniel Lanois');
+    expect(formatSlug('alive-2007')).toBe('Alive 2007');
+    expect(formatSlug('dark-side-of-the-moon')).toBe('Dark Side Of The Moon');
+  });
+
+  it('parses music title formats and extracts year', () => {
+    expect(parseMusicTitle('Pink Floyd - Time')).toEqual({
+      primary: 'Pink Floyd',
+      secondary: 'Time',
+      year: null,
+    });
+    expect(parseMusicTitle('Tim Hecker - Ravedeath 1972 (2011)')).toEqual({
+      primary: 'Tim Hecker',
+      secondary: 'Ravedeath 1972',
+      year: '2011',
+    });
+    expect(parseMusicTitle('Artist "Song Title" (1999)')).toEqual({
+      primary: 'Artist',
+      secondary: 'Song Title',
+      year: '1999',
+    });
   });
 });
