@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import CandidateList from './CandidateList';
+import { useDynamicTheme } from './DynamicThemeProvider';
 
 interface YouTubePlayerProps {
   initialVideoId: string;
@@ -25,12 +26,18 @@ export default function YouTubePlayer({
 }: YouTubePlayerProps) {
   const [currentVideoId, setCurrentVideoId] = useState(initialVideoId);
   const [currentUrl, setCurrentUrl] = useState(initialCurrentUrl);
+  const { loadPaletteFromArtwork } = useDynamicTheme();
 
-  const handleUpdateMatch = (_platform: string, newUrl: string, _auto: boolean, _candidate: any) => {
+  const handleUpdateMatch = (_platform: string, newUrl: string, _auto: boolean, candidate: any) => {
     const videoIdMatch = newUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([a-zA-Z0-9_-]{11})/);
     if (videoIdMatch) {
       setCurrentVideoId(videoIdMatch[1]);
       setCurrentUrl(newUrl);
+    }
+    if (candidate?.thumbnail_url) {
+      loadPaletteFromArtwork(candidate.thumbnail_url);
+    } else if (videoIdMatch) {
+      loadPaletteFromArtwork(`https://i.ytimg.com/vi/${videoIdMatch[1]}/maxresdefault.jpg`);
     }
   };
 

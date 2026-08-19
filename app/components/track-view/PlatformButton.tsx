@@ -5,6 +5,7 @@ import CandidateList from './CandidateList';
 
 import { cleanYouTubeTitle } from '../../lib/youtube/titleParser';
 import { SiSpotify, SiApple } from 'react-icons/si';
+import { useDynamicTheme } from './DynamicThemeProvider';
 
 const ICONS: Record<string, any> = {
   spotify: SiSpotify,
@@ -45,12 +46,16 @@ export default function PlatformButton({
   // since it may not exist in the `candidates` prop below — that's just a
   // stale snapshot taken at the initial server render and never refetched.
   const [pickedCandidate, setPickedCandidate] = useState<any>(null);
+  const { loadPaletteFromArtwork } = useDynamicTheme();
 
   const handleUpdateMatch = (_platform: string, newUrl: string, manual: boolean, candidate?: any, isUncertain?: boolean) => {
     setCurrentUrl(newUrl);
     setCurrentMatchedBy(manual ? 'manual' : null);
     setPickedCandidate(candidate || null);
     setCurrentUncertain(!!isUncertain);
+    if (candidate?.thumbnail_url) {
+      loadPaletteFromArtwork(candidate.thumbnail_url);
+    }
   };
 
   const active = pickedCandidate || candidates.find((c: any) => c.candidate_url === currentUrl) || candidates[0];

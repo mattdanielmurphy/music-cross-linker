@@ -2,7 +2,9 @@ import { Suspense } from 'react';
 import { cleanYouTubeTitle, formatSlug, parseMusicTitle } from '../../lib/youtube/titleParser';
 import { headers } from 'next/headers';
 import { detectCountryFromHeaders } from '../../lib/geo';
-import { resolveEntity } from '../../lib/urlResolver';
+import { resolveEntity, resolveBestMediaMetadata } from '../../lib/urlResolver';
+import { getPaletteForArtworkUrl, PaletteTheme } from '../../lib/palette';
+import { DynamicThemeProvider } from './DynamicThemeProvider';
 import LinkButtons from '../LinkButtons';
 import YouTubeSection from './YouTubeSection';
 import AppleSection from './AppleSection';
@@ -53,36 +55,52 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
   const displaySecondary = ctx.canonicalArtist || (parsed ? parsed.secondary : (a || null));
   const displayYear = parsed?.year || null;
 
+  // Resolve best artwork metadata for palette extraction
+  let initialPalette: PaletteTheme | null = null;
+  let initialArtworkUrl: string | null = null;
+
+  try {
+    const media = await resolveBestMediaMetadata(a || displaySecondary, t || displayPrimary, explicitVideoId, sourceUrl);
+    if (media.imageUrl) {
+      initialArtworkUrl = media.imageUrl;
+      initialPalette = await getPaletteForArtworkUrl(media.imageUrl);
+    }
+  } catch (err) {
+    console.error('Failed to pre-extract artwork palette:', err);
+  }
 
   return (
-    <div className="main-content">
-      <div className="track-card">
-        <header className="track-header">
-          <TypeBadge isAlbum={ctx.isAlbum} typeHint={typeHint} />
-          <h1 className="track-title accent-text">
-            {cleanYouTubeTitle(displayPrimary)}
-            {displayYear && <span className="year-chip">{displayYear}</span>}
-          </h1>
-          {displaySecondary && <h2 className="track-artist">{displaySecondary}</h2>}
-        </header>
+    <DynamicThemeProvider initialPalette={initialPalette} initialArtworkUrl={initialArtworkUrl}>
+      <div className="main-content">
+        <div className="track-card">
+          <header className="track-header">
+            <TypeBadge isAlbum={ctx.isAlbum} typeHint={typeHint} />
+            <h1 className="track-title accent-text">
+              {cleanYouTubeTitle(displayPrimary)}
+              {displayYear && <span className="year-chip">{displayYear}</span>}
+            </h1>
+            {displaySecondary && <h2 className="track-artist">{displaySecondary}</h2>}
+          </header>
 
-        {/* YouTube — highest priority, streamed in first */}
-        <Suspense fallback={<PlayerSkeleton />}>
-          <YouTubeSection ctx={ctx} artist={a} title={t} explicitVideoId={explicitVideoId} sourceUrl={sourceUrl} />
-        </Suspense>
-
-        <LinkButtons>
-          {/* Spotify — second priority */}
-          <Suspense fallback={<LoadingChip platform="spotify" />}>
-            <SpotifySection ctx={ctx} sourceUrl={sourceUrl} />
+          {/* YouTube — highest priority, streamed in first */}
+          <Suspense fallback={<PlayerSkeleton />}>
+            <YouTubeSection ctx={ctx} artist={a} title={t} explicitVideoId={explicitVideoId} sourceUrl={sourceUrl} />
           </Suspense>
 
-          {/* Apple Music — third priority */}
-          <Suspense fallback={<LoadingChip platform="apple_music" />}>
-            <AppleSection ctx={ctx} sourceUrl={sourceUrl} />
-          </Suspense>
-        </LinkButtons>
+          <LinkButtons>
+            {/* Spotify — second priority */}
+            <Suspense fallback={<LoadingChip platform="spotify" />}>
+              <SpotifySection ctx={ctx} sourceUrl={sourceUrl} />
+            </Suspense>
+
+            {/* Apple Music — third priority */}
+            <Suspense fallback={<LoadingChip platform="apple_music" />}>
+              <AppleSection ctx={ctx} sourceUrl={sourceUrl} />
+            </Suspense>
+          </LinkButtons>
+        </div>
       </div>
-    </div>
+    </DynamicThemeProvider>
   );
 }
+

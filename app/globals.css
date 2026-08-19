@@ -54,7 +54,7 @@ body {
 }
 
 .accent-text {
-  color: var(--text-primary);
+  color: var(--c-text-title, var(--text-primary));
 }
 
 .main-content {
@@ -90,9 +90,9 @@ body {
   letter-spacing: 0.05em;
   padding: 0.35rem 0.6rem;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--c-badge-border, rgba(255, 255, 255, 0.1));
+  color: var(--c-badge-color, var(--text-secondary));
+  background: var(--c-badge-bg, rgba(255, 255, 255, 0.03));
   margin-bottom: 1rem;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -120,14 +120,19 @@ body {
   font-weight: 800;
   line-height: 1.2;
   margin-bottom: 0.35rem;
+  color: var(--c-text-title, var(--text-primary));
+  text-shadow: var(--c-text-glow, none);
+  transition: color 0.3s ease, text-shadow 0.3s ease;
 }
 
 .track-artist {
   font-size: 2rem;
   font-weight: 400;
-  /*color: var(--text-secondary);*/
+  color: var(--c-text-artist, rgba(255, 255, 255, 0.88));
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
   margin: 0;
   margin-top: 0.15rem;
+  transition: color 0.3s ease;
 }
 
 .year-chip {
@@ -152,8 +157,9 @@ body {
   padding-top: 56.25%; /* 16:9 Aspect Ratio */
   border-radius: var(--radius-md);
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--c-player-shadow, 0 8px 24px rgba(0, 0, 0, 0.5));
   background: black;
+  transition: box-shadow 0.3s ease;
 }
 
 .player-wrapper iframe {
