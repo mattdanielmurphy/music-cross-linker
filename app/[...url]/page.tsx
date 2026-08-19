@@ -236,12 +236,14 @@ export default async function Page({
   const slugKey = urlSegments.join('/');
   const record = getRecordBySlug(slugKey);
 
+  const videoIdFromQuery = typeof resolvedSearchParams.v === 'string' ? resolvedSearchParams.v : null;
+
   if (record) {
     return (
       <TrackView 
         artist={record.artistName} 
         track={record.title} 
-        videoId={record.videoId} 
+        videoId={videoIdFromQuery || record.videoId} 
         sourceUrl={record.targetUrl} 
         searchParams={resolvedSearchParams} 
       />

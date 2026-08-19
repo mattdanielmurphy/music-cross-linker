@@ -31,7 +31,8 @@ export default function ResolvingRedirect({
       .then((data) => {
         if (cancelled) return;
         if (data?.slug) {
-          router.replace(`/${data.slug}`);
+          const targetPath = videoId ? `/${data.slug}?v=${videoId}` : `/${data.slug}`;
+          router.replace(targetPath);
         } else {
           setFailed(true);
         }

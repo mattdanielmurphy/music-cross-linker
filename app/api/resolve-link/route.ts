@@ -26,19 +26,21 @@ export async function POST(req: NextRequest) {
 
     if (isYoutube) {
       let rawVideoTitle: string | null = null;
+      let channelName: string | null = null;
       try {
         const oembed = await fetch(
           `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
         ).then((r) => (r.ok ? r.json() : null));
         rawVideoTitle = oembed?.title || null;
+        channelName = oembed?.author_name || null;
       } catch {}
 
       if (rawVideoTitle) {
-        const parsed = parseYouTubeTitle(rawVideoTitle);
+        const parsed = parseYouTubeTitle(rawVideoTitle, channelName || undefined);
         if (parsed.artist) artistName = parsed.artist;
         title = parsed.title;
       } else if (title) {
-        const parsed = parseYouTubeTitle(title);
+        const parsed = parseYouTubeTitle(title, channelName || undefined);
         if (parsed.artist) artistName = parsed.artist;
         title = parsed.title;
       }
@@ -50,15 +52,17 @@ export async function POST(req: NextRequest) {
 
   if (videoId) {
     let rawVideoTitle: string | null = null;
+    let channelName: string | null = null;
     try {
       const oembed = await fetch(
         `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
       ).then((r) => (r.ok ? r.json() : null));
       rawVideoTitle = oembed?.title || null;
+      channelName = oembed?.author_name || null;
     } catch {}
 
     if (rawVideoTitle) {
-      const parsed = parseYouTubeTitle(rawVideoTitle);
+      const parsed = parseYouTubeTitle(rawVideoTitle, channelName || undefined);
       const artistName = parsed.artist || '';
       const title = parsed.title;
       const slug = getSlugForUrl(lookupUrl, title, artistName, videoId);

@@ -62,6 +62,59 @@ function similarity(a: string, b: string): number {
   return total === 0 ? 0 : (2 * matches) / total;
 }
 
+interface TargetMetadata {
+  cleanArtist?: string | null;
+  cleanTitle?: string | null;
+  year?: string | null;
+  versionTag?: string | null;
+  isRemaster?: boolean;
+  isMix?: boolean;
+  isLive?: boolean;
+  isOuttake?: boolean;
+}
+
+export function scoreCandidateMatch(
+  candTitle: string | null | undefined,
+  candArtist: string | null | undefined,
+  candAlbum: string | null | undefined,
+  target: TargetMetadata,
+  releaseDate?: string | null
+): number {
+  let score = 0;
+  const name = normalizeForMatch(candTitle);
+  const candArt = normalizeForMatch(candArtist);
+  const candAlb = normalizeForMatch(candAlbum);
+  const targetTitle = normalizeForMatch(target.cleanTitle);
+  const targetArtist = normalizeForMatch(target.cleanArtist);
+
+  if (targetTitle && name === targetTitle) score += 100;
+  else if (targetTitle && name.includes(targetTitle)) score += 50;
+
+  if (targetArtist && (candArt.includes(targetArtist) || targetArtist.includes(candArt))) score += 80;
+
+  // Year matching
+  const candYearMatch = (candTitle || '' + ' ' + (candAlbum || '') + ' ' + (releaseDate || '')).match(/\b(19\d\d|20\d\d)\b/);
+  const candYear = candYearMatch ? candYearMatch[1] : null;
+
+  if (target.year && candYear) {
+    if (target.year === candYear) score += 80;
+    else score -= 60;
+  }
+
+  // Version tag alignment
+  const isCandRemaster = /\b(remastered?|remaster)\b/i.test(candTitle || '') || /\b(remastered?|remaster)\b/i.test(candAlbum || '');
+  if (target.isRemaster && isCandRemaster) score += 40;
+
+  const isCandOuttake = /\b(take\s*\d+|demo|outtake|tribute|karaoke|cover)\b/i.test(candTitle || '');
+  if (!target.isOuttake && isCandOuttake) score -= 80;
+
+  // Compilation / Greatest Hits deprioritization
+  const isCompilation = /\b(greatest hits|the best of|essential|singles|1962-1966|1967-1970|anthology|compilation)\b/i.test(candAlbum || '') || /\b(greatest hits|the best of|essential|singles|1962-1966|1967-1970|anthology|compilation)\b/i.test(candTitle || '');
+  if (isCompilation) score -= 30;
+
+  return score;
+}
+
 function classifyMatch(
   candidateTitle: string | null | undefined,
   candidateArtist: string | null | undefined,

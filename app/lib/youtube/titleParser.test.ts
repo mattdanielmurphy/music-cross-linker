@@ -219,3 +219,21 @@ describe('Spotify title parsing & cleaning', () => {
     });
   });
 });
+
+describe('Music Metadata & Remaster Parsing', () => {
+  it('parses In my life (Remastered 2009) with channel The Beatles - Topic', () => {
+    const { parseMusicMetadata } = require('./titleParser');
+    const meta = parseMusicMetadata('In my life (Remastered 2009)', 'The Beatles - Topic');
+    expect(meta.cleanArtist).toBe('The Beatles');
+    expect(meta.cleanTitle).toBe('In my life');
+    expect(meta.year).toBe('2009');
+    expect(meta.isRemaster).toBe(true);
+    expect(meta.isOuttake).toBe(false);
+  });
+
+  it('detects outtakes and demos properly', () => {
+    const { parseMusicMetadata } = require('./titleParser');
+    const meta = parseMusicMetadata('In My Life (Take 1 / Anthologized)');
+    expect(meta.isOuttake).toBe(true);
+  });
+});

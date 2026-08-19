@@ -111,7 +111,15 @@ def _format_result(best_tier: str, best_item: dict, entity: str) -> dict:
     }
 
 
-def _classify_match(name_raw: str, artist_names_raw: list[str], norm_title: str, norm_artist: str) -> tuple[str, float]:
+def _classify_match(
+    name_raw: str,
+    artist_names_raw: list[str],
+    norm_title: str,
+    norm_artist: str,
+    target_year: str | None = None,
+    target_is_remaster: bool = False,
+    target_is_outtake: bool = False
+) -> tuple[str, float]:
     name = _normalize(name_raw)
     artist_names = [_normalize(a) for a in artist_names_raw]
 
@@ -142,14 +150,35 @@ def _classify_match(name_raw: str, artist_names_raw: list[str], norm_title: str,
 
     edition_penalty = min(len(name_raw) - len(name), 60) * 0.05
 
+    # Year & edition bonus / penalty
+    cand_year_match = re.search(r"\b(19\d\d|20\d\d)\b", name_raw)
+    cand_year = cand_year_match.group(1) if cand_year_match else None
+
+    year_score = 0.0
+    if target_year and cand_year:
+        if target_year == cand_year:
+            year_score += 15.0
+        else:
+            year_score -= 15.0
+
+    # Outtake/demo penalty
+    is_outtake = bool(re.search(r"\b(take\s*\d+|demo|outtake|tribute|karaoke|cover)\b", name_raw, re.IGNORECASE))
+    if not target_is_outtake and is_outtake:
+        year_score -= 30.0
+
+    # Compilation / Greatest Hits deprioritization
+    is_compilation = bool(re.search(r"\b(greatest hits|the best of|essential|singles|1962-1966|1967-1970|anthology|compilation)\b", name_raw, re.IGNORECASE))
+    if is_compilation:
+        year_score -= 10.0
+
     if title_exact and (artist_match or artist_unknown):
-        return "high", 100 + article_bonus + similarity * 10 - edition_penalty
+        return "high", 100 + article_bonus + similarity * 10 - edition_penalty + year_score
     if (title_exact or title_word_match) and artist_match:
-        return "low", 50 + article_bonus + similarity * 10 - edition_penalty
+        return "low", 50 + article_bonus + similarity * 10 - edition_penalty + year_score
     if title_exact and not artist_unknown and not artist_match:
-        return "low", 40 + article_bonus + similarity * 10 - edition_penalty
+        return "low", 40 + article_bonus + similarity * 10 - edition_penalty + year_score
     if artist_match and similarity > 0.35:
-        return "low", 20 + similarity * 10 - edition_penalty
+        return "low", 20 + similarity * 10 - edition_penalty + year_score
 
     return "none", 0
 

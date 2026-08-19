@@ -47,6 +47,65 @@ export function stripNoiseTags(text: string): string {
   return result.trim().replace(/\s+/g, ' ');
 }
 
+export interface MusicMetadata {
+  cleanArtist: string | null;
+  cleanTitle: string;
+  year: string | null;
+  versionTag: string | null;
+  isRemaster: boolean;
+  isMix: boolean;
+  isLive: boolean;
+  isOuttake: boolean;
+  albumHint: string | null;
+}
+
+export function parseMusicMetadata(rawTitle: string, channelName?: string): MusicMetadata {
+  const decoded = decodeHtmlEntities(rawTitle || '');
+  const normalized = normalizeBrackets(decoded);
+
+  let year: string | null = null;
+  const yearMatch = normalized.match(/\b(19\d\d|20\d\d)\b/);
+  if (yearMatch) {
+    year = yearMatch[1];
+  }
+
+  const isRemaster = /\b(remastered?|remaster)\b/i.test(normalized);
+  const isMix = /\b(mix|remix|stereo|mono)\b/i.test(normalized);
+  const isLive = /\b(live|concert|session|acoustic)\b/i.test(normalized) && !/\b(acoustic tribute)\b/i.test(normalized);
+  const isOuttake = /\b(take\s*\d+|demo|outtake|tribute|karaoke|instrumental cover|cover)\b/i.test(normalized);
+
+  let versionTag: string | null = null;
+  const versionMatch = normalized.match(/[\(\[](?:[^\)\]]*?\b(remastered?|mix|take\s*\d+|demo|outtake|live|mono|stereo)\b[^\)\]]*?)[\)\]]/i);
+  if (versionMatch) {
+    versionTag = versionMatch[0].replace(/^[\(\[]|[\)\]]$/g, '').trim();
+  }
+
+  let parsed = parseYouTubeTitle(rawTitle, channelName);
+
+  let cleanArtist = parsed.artist;
+  if (cleanArtist) {
+    cleanArtist = cleanArtist
+      .replace(/\s*-\s*Topic$/i, '')
+      .replace(/VEVO$/i, '')
+      .replace(/\s*(Official|Music|Video|Channel)\s*$/i, '')
+      .trim();
+  }
+
+  let cleanTitle = parsed.title;
+
+  return {
+    cleanArtist: cleanArtist || null,
+    cleanTitle,
+    year,
+    versionTag,
+    isRemaster,
+    isMix,
+    isLive,
+    isOuttake,
+    albumHint: null,
+  };
+}
+
 export function repairUnmatchedBrackets(text: string): string {
   let openCount = 0;
   let cleaned = '';
