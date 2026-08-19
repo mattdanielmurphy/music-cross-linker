@@ -1,4 +1,5 @@
-import sharp from 'sharp';
+import jpeg from 'jpeg-js';
+import { PNG } from 'pngjs';
 
 export interface HslColor {
   h: number; // 0 - 360
@@ -386,6 +387,73 @@ export function detectContentBoundingBox(
   return { minX, maxX, minY, maxY };
 }
 
+export function decodeImageToRgba(
+  imageBuffer: Buffer
+): { data: Uint8Array | Buffer; width: number; height: number } | null {
+  if (!imageBuffer || imageBuffer.length < 4) return null;
+
+  // 1. JPEG check (magic FF D8)
+  if (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) {
+    try {
+      const decoded = jpeg.decode(imageBuffer, { useTArray: true, formatAsRGBA: true });
+      return { data: decoded.data, width: decoded.width, height: decoded.height };
+    } catch {
+      // fallback
+    }
+  }
+
+  // 2. PNG check (magic 89 50 4E 47)
+  if (
+    imageBuffer[0] === 0x89 &&
+    imageBuffer[1] === 0x50 &&
+    imageBuffer[2] === 0x4e &&
+    imageBuffer[3] === 0x47
+  ) {
+    try {
+      const png = PNG.sync.read(imageBuffer);
+      return { data: png.data, width: png.width, height: png.height };
+    } catch {
+      // fallback
+    }
+  }
+
+  // 3. Fallback attempts
+  try {
+    const decoded = jpeg.decode(imageBuffer, { useTArray: true, formatAsRGBA: true });
+    return { data: decoded.data, width: decoded.width, height: decoded.height };
+  } catch {
+    try {
+      const png = PNG.sync.read(imageBuffer);
+      return { data: png.data, width: png.width, height: png.height };
+    } catch {
+      return null;
+    }
+  }
+}
+
+export function sampleImageBufferToGrid(
+  rawData: Uint8Array | Buffer,
+  origWidth: number,
+  origHeight: number,
+  targetWidth = 80,
+  targetHeight = 80
+): Buffer {
+  const targetBuffer = Buffer.alloc(targetWidth * targetHeight * 4);
+  for (let y = 0; y < targetHeight; y++) {
+    const srcY = Math.min(origHeight - 1, Math.floor((y / targetHeight) * origHeight));
+    for (let x = 0; x < targetWidth; x++) {
+      const srcX = Math.min(origWidth - 1, Math.floor((x / targetWidth) * origWidth));
+      const srcIdx = (srcY * origWidth + srcX) * 4;
+      const dstIdx = (y * targetWidth + x) * 4;
+      targetBuffer[dstIdx] = rawData[srcIdx];
+      targetBuffer[dstIdx + 1] = rawData[srcIdx + 1];
+      targetBuffer[dstIdx + 2] = rawData[srcIdx + 2];
+      targetBuffer[dstIdx + 3] = rawData[srcIdx + 3] !== undefined ? rawData[srcIdx + 3] : 255;
+    }
+  }
+  return targetBuffer;
+}
+
 /**
  * Extracts the True Perceptual Average Color (for the ambient background)
  * and the Striking Accent Hue (for glowing highlights and typography) from an artwork buffer.
@@ -393,17 +461,21 @@ export function detectContentBoundingBox(
 export async function extractArtworkHues(
   imageBuffer: Buffer
 ): Promise<{ dominantHsl: HslColor; accentHsl: HslColor }> {
+  const decoded = decodeImageToRgba(imageBuffer);
+  if (!decoded) {
+    return {
+      dominantHsl: { h: 220, s: 50, l: 30 },
+      accentHsl: { h: 38, s: 95, l: 50 },
+    };
+  }
+
   // Resize to 80x80 for fast quantization, statistical averaging, and pixel inspection
   const width = 80;
   const height = 80;
-  const { data, info } = await sharp(imageBuffer)
-    .resize(width, height, { fit: 'cover' })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  const data = sampleImageBufferToGrid(decoded.data, decoded.width, decoded.height, width, height);
 
   const buckets = new Map<string, { r: number; g: number; b: number; count: number }>();
-  const step = info.channels; // 4 (RGBA)
+  const step = 4; // 4 (RGBA)
 
   // Detect and ignore letterbox/pillarbox neutral borders (black, off-black, white, gray)
   const bbox = detectContentBoundingBox(data, width, height, step);

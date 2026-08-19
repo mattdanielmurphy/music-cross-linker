@@ -11,15 +11,17 @@
   "dependencies": {
     "@tabler/icons-react": "^3.46.0",
     "cheerio": "^1.2.0",
+    "jpeg-js": "^0.4.4",
     "next": "16.2.12",
+    "pngjs": "^7.0.0",
     "postgres": "^3.4.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-icons": "^5.7.0",
-    "sharp": "^0.35.3"
+    "react-icons": "^5.7.0"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
@@ -27,11 +29,9 @@
     "typescript": "^5"
   },
   "ignoreScripts": [
-    "sharp",
     "unrs-resolver"
   ],
   "trustedDependencies": [
-    "sharp",
     "unrs-resolver"
   ]
 }

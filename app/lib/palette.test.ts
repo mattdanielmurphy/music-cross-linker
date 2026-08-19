@@ -116,9 +116,10 @@ describe('Dynamic Album Art Palette & Typography Contrast Engine', () => {
       }
     }
 
-    const pngBuffer = await import('sharp').then((m) =>
-      m.default(rawBuffer, { raw: { width, height, channels } }).png().toBuffer()
-    );
+    const { PNG } = await import('pngjs');
+    const png = new PNG({ width, height });
+    png.data = rawBuffer;
+    const pngBuffer = PNG.sync.write(png);
 
     const hues = await extractArtworkHues(pngBuffer);
 
@@ -161,9 +162,10 @@ describe('Dynamic Album Art Palette & Typography Contrast Engine', () => {
     expect(bbox.minY).toBe(0);
     expect(bbox.maxY).toBe(79);
 
-    const pngBuffer = await import('sharp').then((m) =>
-      m.default(rawBuffer, { raw: { width, height, channels } }).png().toBuffer()
-    );
+    const { PNG } = await import('pngjs');
+    const png = new PNG({ width, height });
+    png.data = rawBuffer;
+    const pngBuffer = PNG.sync.write(png);
 
     const hues = await extractArtworkHues(pngBuffer);
     // Cyan hue is ~193 deg
