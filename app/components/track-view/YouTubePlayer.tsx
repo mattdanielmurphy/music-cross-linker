@@ -38,7 +38,7 @@ export default function YouTubePlayer({
     <>
       <div className="player-wrapper">
         <iframe
-          src={`https://www.youtube.com/embed/${currentVideoId}?autoplay=0`}
+          src={`https://www.youtube-nocookie.com/embed/${currentVideoId}?autoplay=0&rel=0&modestbranding=1&iv_load_policy=3`}
           title={`${title} by ${artist}`}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
