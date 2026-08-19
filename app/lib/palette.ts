@@ -276,6 +276,116 @@ export function sanitizeHarmoniousHsl(hsl: HslColor): HslColor {
   return { h, s, l };
 }
 
+export interface ContentBoundingBox {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/**
+ * Checks if a pixel is an uncolored/neutral border pixel (black, off-black, white, off-white, neutral gray).
+ * Striking or intentional colors (s >= 25, rich hues) are preserved.
+ */
+export function isNeutralBorderPixel(r: number, g: number, b: number): boolean {
+  const hsl = rgbToHsl(r, g, b);
+  // Saturated/striking color is NOT a neutral border
+  if (hsl.s >= 25) return false;
+  // Near black / off-black
+  if (hsl.l <= 20) return true;
+  // Near white / off-white
+  if (hsl.l >= 82) return true;
+  // Flat gray
+  if (hsl.s <= 10) return true;
+  return false;
+}
+
+/**
+ * Detects letterbox (top/bottom) and pillarbox (left/right) neutral borders in an image buffer.
+ * Strips black/white/gray filler bars while preserving intentional colorful album borders.
+ */
+export function detectContentBoundingBox(
+  data: Buffer,
+  width: number,
+  height: number,
+  channels: number
+): ContentBoundingBox {
+  const isNeutralAt = (x: number, y: number): boolean => {
+    const idx = (y * width + x) * channels;
+    const a = channels >= 4 ? data[idx + 3] : 255;
+    if (a < 128) return true; // transparent is treated as border
+    return isNeutralBorderPixel(data[idx], data[idx + 1], data[idx + 2]);
+  };
+
+  const maxCropX = Math.floor(width * 0.4);
+  const maxCropY = Math.floor(height * 0.4);
+
+  // Top letterbox
+  let minY = 0;
+  while (minY < maxCropY) {
+    let neutralCount = 0;
+    for (let x = 0; x < width; x++) {
+      if (isNeutralAt(x, minY)) neutralCount++;
+    }
+    if (neutralCount / width >= 0.88) {
+      minY++;
+    } else {
+      break;
+    }
+  }
+
+  // Bottom letterbox
+  let maxY = height - 1;
+  while (maxY > height - 1 - maxCropY && maxY > minY) {
+    let neutralCount = 0;
+    for (let x = 0; x < width; x++) {
+      if (isNeutralAt(x, maxY)) neutralCount++;
+    }
+    if (neutralCount / width >= 0.88) {
+      maxY--;
+    } else {
+      break;
+    }
+  }
+
+  // Left pillarbox
+  let minX = 0;
+  while (minX < maxCropX) {
+    let neutralCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      if (isNeutralAt(minX, y)) neutralCount++;
+    }
+    const h = maxY - minY + 1;
+    if (neutralCount / h >= 0.88) {
+      minX++;
+    } else {
+      break;
+    }
+  }
+
+  // Right pillarbox
+  let maxX = width - 1;
+  while (maxX > width - 1 - maxCropX && maxX > minX) {
+    let neutralCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      if (isNeutralAt(maxX, y)) neutralCount++;
+    }
+    const h = maxY - minY + 1;
+    if (neutralCount / h >= 0.88) {
+      maxX--;
+    } else {
+      break;
+    }
+  }
+
+  // Safety fallback if entire image was flagged
+  if (maxX - minX < 10 || maxY - minY < 10) {
+    return { minX: 0, maxX: width - 1, minY: 0, maxY: height - 1 };
+  }
+
+  return { minX, maxX, minY, maxY };
+}
+
 /**
  * Extracts the True Perceptual Average Color (for the ambient background)
  * and the Striking Accent Hue (for glowing highlights and typography) from an artwork buffer.
@@ -284,14 +394,19 @@ export async function extractArtworkHues(
   imageBuffer: Buffer
 ): Promise<{ dominantHsl: HslColor; accentHsl: HslColor }> {
   // Resize to 80x80 for fast quantization, statistical averaging, and pixel inspection
+  const width = 80;
+  const height = 80;
   const { data, info } = await sharp(imageBuffer)
-    .resize(80, 80, { fit: 'cover' })
+    .resize(width, height, { fit: 'cover' })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
 
   const buckets = new Map<string, { r: number; g: number; b: number; count: number }>();
   const step = info.channels; // 4 (RGBA)
+
+  // Detect and ignore letterbox/pillarbox neutral borders (black, off-black, white, gray)
+  const bbox = detectContentBoundingBox(data, width, height, step);
 
   // Circular mean accumulators for true weighted average color
   let sumCosHue = 0;
@@ -300,44 +415,47 @@ export async function extractArtworkHues(
   let sumLight = 0;
   let totalWeight = 0;
 
-  for (let i = 0; i < data.length; i += step) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const a = data[i + 3];
-    if (a < 128) continue;
+  for (let y = bbox.minY; y <= bbox.maxY; y++) {
+    for (let x = bbox.minX; x <= bbox.maxX; x++) {
+      const i = (y * width + x) * step;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+      if (a < 128) continue;
 
-    const hsl = rgbToHsl(r, g, b);
+      const hsl = rgbToHsl(r, g, b);
 
-    // Filter extreme near-blacks and near-whites from hue dominance
-    if (hsl.l < 5 || hsl.l > 95) continue;
+      // Filter extreme near-blacks and near-whites from hue dominance
+      if (hsl.l < 5 || hsl.l > 95) continue;
 
-    // Aesthetic weighting: penalize murky olive/sludge, boost rich sunset/indigo tones
-    const aestheticWeight = getAestheticScoreMultiplier(hsl.h, hsl.s, hsl.l);
-    // Weight by saturation + aesthetic suitability so vivid/representative regions guide the average
-    const pixelWeight = (Math.max(15, hsl.s) / 100) * aestheticWeight;
+      // Aesthetic weighting: penalize murky olive/sludge, boost rich sunset/indigo tones
+      const aestheticWeight = getAestheticScoreMultiplier(hsl.h, hsl.s, hsl.l);
+      // Weight by saturation + aesthetic suitability so vivid/representative regions guide the average
+      const pixelWeight = (Math.max(15, hsl.s) / 100) * aestheticWeight;
 
-    const rad = (hsl.h * Math.PI) / 180;
-    sumCosHue += Math.cos(rad) * pixelWeight;
-    sumSinHue += Math.sin(rad) * pixelWeight;
-    sumSat += hsl.s * pixelWeight;
-    sumLight += hsl.l * pixelWeight;
-    totalWeight += pixelWeight;
+      const rad = (hsl.h * Math.PI) / 180;
+      sumCosHue += Math.cos(rad) * pixelWeight;
+      sumSinHue += Math.sin(rad) * pixelWeight;
+      sumSat += hsl.s * pixelWeight;
+      sumLight += hsl.l * pixelWeight;
+      totalWeight += pixelWeight;
 
-    // 16-step RGB quantizing for discrete cluster & accent scoring
-    const qr = Math.floor(r / 16) * 16;
-    const qg = Math.floor(g / 16) * 16;
-    const qb = Math.floor(b / 16) * 16;
-    const key = `${qr},${qg},${qb}`;
+      // 16-step RGB quantizing for discrete cluster & accent scoring
+      const qr = Math.floor(r / 16) * 16;
+      const qg = Math.floor(g / 16) * 16;
+      const qb = Math.floor(b / 16) * 16;
+      const key = `${qr},${qg},${qb}`;
 
-    const existing = buckets.get(key);
-    if (existing) {
-      existing.r = Math.round((existing.r * existing.count + r) / (existing.count + 1));
-      existing.g = Math.round((existing.g * existing.count + g) / (existing.count + 1));
-      existing.b = Math.round((existing.b * existing.count + b) / (existing.count + 1));
-      existing.count++;
-    } else {
-      buckets.set(key, { r, g, b, count: 1 });
+      const existing = buckets.get(key);
+      if (existing) {
+        existing.r = Math.round((existing.r * existing.count + r) / (existing.count + 1));
+        existing.g = Math.round((existing.g * existing.count + g) / (existing.count + 1));
+        existing.b = Math.round((existing.b * existing.count + b) / (existing.count + 1));
+        existing.count++;
+      } else {
+        buckets.set(key, { r, g, b, count: 1 });
+      }
     }
   }
 

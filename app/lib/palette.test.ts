@@ -126,4 +126,48 @@ describe('Dynamic Album Art Palette & Typography Contrast Engine', () => {
     expect(hues.dominantHsl.h).toBeLessThanOrEqual(45);
     expect(hues.dominantHsl.h).toBeGreaterThanOrEqual(10);
   });
+
+  test('detectContentBoundingBox crops out black pillarbox bars but preserves colorful artwork', async () => {
+    // Create 80x80 image with 15px black pillarbox on left and right, and vivid cyan art in center
+    const width = 80;
+    const height = 80;
+    const channels = 4;
+    const rawBuffer = Buffer.alloc(width * height * channels);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * channels;
+        if (x < 15 || x >= 65) {
+          // Black pillarbox bar
+          rawBuffer[idx] = 10;
+          rawBuffer[idx + 1] = 10;
+          rawBuffer[idx + 2] = 10;
+          rawBuffer[idx + 3] = 255;
+        } else {
+          // Vivid Cyan Artwork: rgb(0, 200, 255)
+          rawBuffer[idx] = 0;
+          rawBuffer[idx + 1] = 200;
+          rawBuffer[idx + 2] = 255;
+          rawBuffer[idx + 3] = 255;
+        }
+      }
+    }
+
+    const { detectContentBoundingBox } = await import('./palette');
+    const bbox = detectContentBoundingBox(rawBuffer, width, height, channels);
+
+    expect(bbox.minX).toBe(15);
+    expect(bbox.maxX).toBe(64);
+    expect(bbox.minY).toBe(0);
+    expect(bbox.maxY).toBe(79);
+
+    const pngBuffer = await import('sharp').then((m) =>
+      m.default(rawBuffer, { raw: { width, height, channels } }).png().toBuffer()
+    );
+
+    const hues = await extractArtworkHues(pngBuffer);
+    // Cyan hue is ~193 deg
+    expect(hues.dominantHsl.h).toBeGreaterThanOrEqual(180);
+    expect(hues.dominantHsl.h).toBeLessThanOrEqual(210);
+  });
 });
