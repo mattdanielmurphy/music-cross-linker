@@ -48,24 +48,24 @@ export interface PaletteTheme {
 }
 
 export const DEFAULT_PALETTE_CONFIG: Required<PaletteThemeConfig> = {
-  patternMode: 'spotlightHalo',
-  gradientAngle: 185,
-  topSpreadPercent: 26,
-  midSpreadPercent: 78,
-  haloRadiusPx: 340,
-  haloOpacity: 0.70,
-  topLightness: 21,
-  accentLightness: 38,
-  accentIntensity: 0.90,
-  saturationMultiplier: 1.15,
-  baseLightness: 5,
-  textMode: 'adaptiveAccent',
-  textLightness: 90,
-  textSaturation: 92,
-  textGlowOpacity: 0.50,
-  cardGlowOpacity: 0.40,
+  patternMode: 'linearDual',
+  gradientAngle: 165,
+  topSpreadPercent: 32,
+  midSpreadPercent: 82,
+  haloRadiusPx: 300,
+  haloOpacity: 0.60,
+  topLightness: 24,
+  accentLightness: 45,
+  accentIntensity: 0.95,
+  saturationMultiplier: 1.60,
+  baseLightness: 4,
+  textMode: 'neonPop',
+  textLightness: 94,
+  textSaturation: 100,
+  textGlowOpacity: 0.75,
+  cardGlowOpacity: 0.70,
   grainOverlay: false,
-  playerShadowDepth: 3,
+  playerShadowDepth: 4,
 };
 
 // Simple LRU cache for computed palette themes
@@ -161,13 +161,129 @@ function hueDistance(h1: number, h2: number): number {
   return diff > 180 ? 360 - diff : diff;
 }
 
+export interface GrossColorRejectionRule {
+  id: string;
+  name: string;
+  hueMin: number;
+  hueMax: number;
+  satMin?: number;
+  satMax?: number;
+  lightnessMin?: number;
+  lightnessMax?: number;
+  penaltyMultiplier: number;
+  fallbackTargetHue?: number;
+}
+
 /**
- * Extracts the Dominant Base Hue and the Striking Accent Hue from an image buffer
+ * Gross Color Rejection List:
+ * Filters out unappealing, muddy, murky, and sickly hues (e.g. Pantone 448 C "ugliest color",
+ * baby poop, murky bile, dirty mustard, and sludge olive) from dominating album art backgrounds.
+ */
+export const GROSS_COLOR_REJECTION_RULES: GrossColorRejectionRule[] = [
+  {
+    id: 'pantone-448c-sludge-olive',
+    name: 'Murky Olive / Pantone 448 C Sludge / Baby Poop',
+    hueMin: 55,
+    hueMax: 95,
+    penaltyMultiplier: 0.05, // 95% rejection penalty
+    fallbackTargetHue: 42,
+  },
+  {
+    id: 'dirty-mustard-yellow',
+    name: 'Dirty Mustard / Muddy Yellow-Green',
+    hueMin: 45,
+    hueMax: 55,
+    penaltyMultiplier: 0.20, // 80% penalty
+    fallbackTargetHue: 40,
+  },
+  {
+    id: 'pea-soup-chartreuse',
+    name: 'Sickly Pea Soup Chartreuse',
+    hueMin: 95,
+    hueMax: 110,
+    satMin: 15,
+    penaltyMultiplier: 0.25,
+    fallbackTargetHue: 135,
+  },
+];
+
+/**
+ * Calculates an aesthetic score multiplier for a given color.
+ * Murky/sludge hues are heavily penalized, while rich and atmospheric musical
+ * background tones (sunset ambers, twilight blues, velvet purples, emeralds) are boosted.
+ */
+export function getAestheticScoreMultiplier(h: number, s: number, l: number): number {
+  h = ((h % 360) + 360) % 360;
+
+  // 1. Check Gross Color Rejection Rules
+  for (const rule of GROSS_COLOR_REJECTION_RULES) {
+    if (h >= rule.hueMin && h <= rule.hueMax) {
+      const satMatch = (rule.satMin === undefined || s >= rule.satMin) &&
+                       (rule.satMax === undefined || s <= rule.satMax);
+      const lightMatch = (rule.lightnessMin === undefined || l >= rule.lightnessMin) &&
+                         (rule.lightnessMax === undefined || l <= rule.lightnessMax);
+      if (satMatch && lightMatch) {
+        return rule.penaltyMultiplier;
+      }
+    }
+  }
+
+  // 2. Atmospheric & High-Aesthetic Harmony Boosts
+  if (h >= 200 && h <= 250) {
+    // Twilight Blue / Sapphire / Indigo
+    return 1.30;
+  }
+  if ((h >= 10 && h <= 42) || (h >= 345 && h <= 360)) {
+    // Sunset Amber / Golden Honey / Warm Coral
+    return 1.30;
+  }
+  if (h >= 265 && h <= 335) {
+    // Velvet Violet / Royal Purple / Magenta
+    return 1.25;
+  }
+  if (h >= 125 && h <= 170) {
+    // Lush Forest / Emerald
+    return 1.20;
+  }
+
+  return 1.0;
+}
+
+/**
+ * Sanitizes and harmonizes any remaining unpleasant or gross hues into aesthetic musical palettes.
+ * Prevents monochromatic olive/sludge artwork from producing unpleasant background gradients.
+ */
+export function sanitizeHarmoniousHsl(hsl: HslColor): HslColor {
+  let { h, s, l } = hsl;
+  h = ((h % 360) + 360) % 360;
+
+  if (h >= 50 && h <= 95) {
+    // Olive / Sludge / Dirty Mustard zone
+    if (h <= 75) {
+      // Shift dirty mustard toward warm golden amber
+      h = 42;
+      s = Math.min(s, 75);
+    } else {
+      // Shift drab olive toward deep lush emerald
+      h = 135;
+      s = Math.min(s, 65);
+    }
+  } else if (h > 95 && h <= 110) {
+    // Sickly chartreuse -> clean emerald
+    h = 135;
+  }
+
+  return { h, s, l };
+}
+
+/**
+ * Extracts the True Perceptual Average Color (for the ambient background)
+ * and the Striking Accent Hue (for glowing highlights and typography) from an artwork buffer.
  */
 export async function extractArtworkHues(
   imageBuffer: Buffer
 ): Promise<{ dominantHsl: HslColor; accentHsl: HslColor }> {
-  // Resize to 80x80 for fast quantization and pixel inspection
+  // Resize to 80x80 for fast quantization, statistical averaging, and pixel inspection
   const { data, info } = await sharp(imageBuffer)
     .resize(80, 80, { fit: 'cover' })
     .ensureAlpha()
@@ -177,6 +293,13 @@ export async function extractArtworkHues(
   const buckets = new Map<string, { r: number; g: number; b: number; count: number }>();
   const step = info.channels; // 4 (RGBA)
 
+  // Circular mean accumulators for true weighted average color
+  let sumCosHue = 0;
+  let sumSinHue = 0;
+  let sumSat = 0;
+  let sumLight = 0;
+  let totalWeight = 0;
+
   for (let i = 0; i < data.length; i += step) {
     const r = data[i];
     const g = data[i + 1];
@@ -184,14 +307,24 @@ export async function extractArtworkHues(
     const a = data[i + 3];
     if (a < 128) continue;
 
-    const max = Math.max(r, g, b) / 255;
-    const min = Math.min(r, g, b) / 255;
-    const l = (max + min) / 2;
+    const hsl = rgbToHsl(r, g, b);
 
     // Filter extreme near-blacks and near-whites from hue dominance
-    if (l < 0.05 || l > 0.95) continue;
+    if (hsl.l < 5 || hsl.l > 95) continue;
 
-    // 16-step RGB quantizing
+    // Aesthetic weighting: penalize murky olive/sludge, boost rich sunset/indigo tones
+    const aestheticWeight = getAestheticScoreMultiplier(hsl.h, hsl.s, hsl.l);
+    // Weight by saturation + aesthetic suitability so vivid/representative regions guide the average
+    const pixelWeight = (Math.max(15, hsl.s) / 100) * aestheticWeight;
+
+    const rad = (hsl.h * Math.PI) / 180;
+    sumCosHue += Math.cos(rad) * pixelWeight;
+    sumSinHue += Math.sin(rad) * pixelWeight;
+    sumSat += hsl.s * pixelWeight;
+    sumLight += hsl.l * pixelWeight;
+    totalWeight += pixelWeight;
+
+    // 16-step RGB quantizing for discrete cluster & accent scoring
     const qr = Math.floor(r / 16) * 16;
     const qg = Math.floor(g / 16) * 16;
     const qb = Math.floor(b / 16) * 16;
@@ -213,35 +346,43 @@ export async function extractArtworkHues(
     ...rgbToHsl(c.r, c.g, c.b),
   }));
 
-  if (list.length === 0) {
+  if (list.length === 0 || totalWeight === 0) {
     return {
       dominantHsl: { h: 220, s: 50, l: 30 },
       accentHsl: { h: 38, s: 95, l: 50 },
     };
   }
 
-  // 1. Dominant Hue scoring: saturation + abundance weighting
-  const sortedByDominance = [...list].sort(
-    (a, b) =>
-      Math.pow(b.s + 10, 0.8) * Math.log2(b.count + 2) -
-      Math.pow(a.s + 10, 0.8) * Math.log2(a.count + 2)
-  );
-  const dom = sortedByDominance[0] || { h: 220, s: 50, l: 30 };
+  // 1. Calculate Perceptual Average HSL (ambient foundation)
+  const avgHueRad = Math.atan2(sumSinHue, sumCosHue);
+  let avgHueDeg = Math.round((avgHueRad * 180) / Math.PI);
+  if (avgHueDeg < 0) avgHueDeg += 360;
 
-  // 2. Striking Accent Hue: high saturation + high hue angle distance ΔH > 45°
-  // Scoring formula captures vivid streaks (e.g. Tame Impala's orange/gold stripe)
+  const avgSat = Math.round(sumSat / totalWeight);
+  const avgLight = Math.round(sumLight / totalWeight);
+
+  const rawDom: HslColor = {
+    h: avgHueDeg,
+    s: Math.max(20, Math.min(90, avgSat)),
+    l: Math.max(15, Math.min(80, avgLight)),
+  };
+  const dom = sanitizeHarmoniousHsl(rawDom);
+
+  // 2. Striking Accent Hue: vibrant feature with high contrast ΔH from dominant average
   const accents = [...list].sort((a, b) => {
     const distA = hueDistance(a.h, dom.h);
     const distB = hueDistance(b.h, dom.h);
-    const scoreA = Math.pow(a.s, 2.0) * Math.pow(Math.max(distA, 25), 1.2) * Math.log2(a.count + 1);
-    const scoreB = Math.pow(b.s, 2.0) * Math.pow(Math.max(distB, 25), 1.2) * Math.log2(b.count + 1);
+    const multA = getAestheticScoreMultiplier(a.h, a.s, a.l);
+    const multB = getAestheticScoreMultiplier(b.h, b.s, b.l);
+    const scoreA = Math.pow(a.s, 2.0) * Math.pow(Math.max(distA, 25), 1.2) * Math.log2(a.count + 1) * multA;
+    const scoreB = Math.pow(b.s, 2.0) * Math.pow(Math.max(distB, 25), 1.2) * Math.log2(b.count + 1) * multB;
     return scoreB - scoreA;
   });
 
-  let acc = accents[0];
-  // If the accent is too close in hue to dominant, pick complementary
-  if (!acc || hueDistance(acc.h, dom.h) < 25) {
-    acc = {
+  let rawAcc = accents[0];
+  // If the accent is too close in hue to dominant average, pick complementary pop
+  if (!rawAcc || hueDistance(rawAcc.h, dom.h) < 25) {
+    rawAcc = {
       r: 255,
       g: 165,
       b: 0,
@@ -251,10 +392,11 @@ export async function extractArtworkHues(
       l: 50,
     };
   }
+  const acc = sanitizeHarmoniousHsl({ h: rawAcc.h, s: rawAcc.s, l: rawAcc.l });
 
   return {
-    dominantHsl: { h: dom.h, s: dom.s, l: dom.l },
-    accentHsl: { h: acc.h, s: acc.s, l: acc.l },
+    dominantHsl: dom,
+    accentHsl: acc,
   };
 }
 
@@ -269,14 +411,18 @@ export function buildPaletteTheme(
   const config = { ...DEFAULT_PALETTE_CONFIG, ...userConfig };
   const satMult = config.saturationMultiplier;
 
-  // 1. Dominant Top Color
-  const topSat = Math.min(100, Math.round(dominantHsl.s * satMult));
-  const topRgb = hslToRgb(dominantHsl.h, topSat, config.topLightness);
+  // Sanitize dominant & accent HSL through gross color harmony filter
+  const cleanDom = sanitizeHarmoniousHsl(dominantHsl);
+  const cleanAcc = sanitizeHarmoniousHsl(accentHsl);
+
+  // 1. Dominant Top Color (Aesthetic average ambient)
+  const topSat = Math.min(100, Math.round(cleanDom.s * satMult));
+  const topRgb = hslToRgb(cleanDom.h, topSat, config.topLightness);
   const topHex = rgbToHex(...topRgb);
 
   // 2. Striking Accent Color
-  const accentSat = Math.min(100, Math.round(accentHsl.s * satMult * 1.05));
-  const accentRgb = hslToRgb(accentHsl.h, accentSat, config.accentLightness);
+  const accentSat = Math.min(100, Math.round(cleanAcc.s * satMult * 1.05));
+  const accentRgb = hslToRgb(cleanAcc.h, accentSat, config.accentLightness);
   const accentHex = rgbToHex(...accentRgb);
 
   // 3. Base Floor Color (dark obsidian/slate floor)
