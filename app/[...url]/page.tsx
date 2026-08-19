@@ -8,14 +8,11 @@ import {
   parseMusicTitle,
   buildPageTitle,
   buildPageDescription,
+  extractVideoId,
 } from '../lib/youtube/titleParser';
+import { resolveBestMediaMetadata } from '../lib/urlResolver';
 
 const MUSIC_HOSTS = ['youtube.com', 'youtu.be', 'music.apple.com', 'spotify.com', 'soundcloud.com'];
-
-function extractVideoId(str: string): string | null {
-  const m = str.match(/[?&]v=([\w-]{11})/) || str.match(/youtu\.be\/([\w-]{11})/) || str.match(/\/shorts\/([\w-]{11})/) || str.match(/\/embed\/([\w-]{11})/);
-  return m ? m[1] : null;
-}
 
 export async function generateMetadata({
   params,
@@ -57,39 +54,49 @@ export async function generateMetadata({
     }
 
     const record = findRecordByTargetUrlOrVideo(canonicalUrl, videoId);
-    if (record) {
-      const pageTitle = buildPageTitle(record.artistName, record.title);
-      const pageDescription = buildPageDescription(record.artistName, record.title);
-      return {
-        title: { absolute: pageTitle },
-        description: pageDescription,
-        openGraph: {
-          title: pageTitle,
-          description: pageDescription,
-          siteName: 'Multilink',
-        },
-        twitter: {
-          card: 'summary',
-          title: pageTitle,
-          description: pageDescription,
-        },
-      };
-    }
+    let artist = record?.artistName || null;
+    let track = record?.title || null;
+    const pageTitle = buildPageTitle(artist, track);
+    const pageDescription = buildPageDescription(artist, track);
 
-    const defaultTitle = 'Multilink - Universal Music Links';
-    const defaultDesc = 'Search and cross-link tracks across YouTube, Spotify, and Apple Music.';
+    const { imageUrl, imageWidth, imageHeight, videoId: resolvedVideoId } =
+      await resolveBestMediaMetadata(artist, track, videoId || record?.videoId, canonicalUrl);
+
     return {
-      title: { absolute: defaultTitle },
-      description: defaultDesc,
+      title: { absolute: pageTitle },
+      description: pageDescription,
       openGraph: {
-        title: defaultTitle,
-        description: defaultDesc,
+        title: pageTitle,
+        description: pageDescription,
         siteName: 'Multilink',
+        type: 'music.song',
+        images: imageUrl
+          ? [
+              {
+                url: imageUrl,
+                width: imageWidth,
+                height: imageHeight,
+                alt: pageTitle,
+              },
+            ]
+          : undefined,
+        videos: resolvedVideoId
+          ? [
+              {
+                url: `https://www.youtube.com/embed/${resolvedVideoId}`,
+                secureUrl: `https://www.youtube.com/embed/${resolvedVideoId}`,
+                type: 'text/html',
+                width: 1280,
+                height: 720,
+              },
+            ]
+          : undefined,
       },
       twitter: {
-        card: 'summary',
-        title: defaultTitle,
-        description: defaultDesc,
+        card: 'summary_large_image',
+        title: pageTitle,
+        description: pageDescription,
+        images: imageUrl ? [imageUrl] : undefined,
       },
     };
   }
@@ -99,6 +106,7 @@ export async function generateMetadata({
 
   let artist: string | null = null;
   let track: string | null = null;
+  let fallbackVideoId: string | null = record?.videoId || null;
 
   if (record) {
     artist = record.artistName;
@@ -124,6 +132,9 @@ export async function generateMetadata({
   const pageTitle = buildPageTitle(artist, track);
   const pageDescription = buildPageDescription(artist, track);
 
+  const { imageUrl, imageWidth, imageHeight, videoId: resolvedVideoId } =
+    await resolveBestMediaMetadata(artist, track, fallbackVideoId, record?.targetUrl);
+
   return {
     title: { absolute: pageTitle },
     description: pageDescription,
@@ -131,11 +142,34 @@ export async function generateMetadata({
       title: pageTitle,
       description: pageDescription,
       siteName: 'Multilink',
+      type: 'music.song',
+      images: imageUrl
+        ? [
+            {
+              url: imageUrl,
+              width: imageWidth,
+              height: imageHeight,
+              alt: pageTitle,
+            },
+          ]
+        : undefined,
+      videos: resolvedVideoId
+        ? [
+            {
+              url: `https://www.youtube.com/embed/${resolvedVideoId}`,
+              secureUrl: `https://www.youtube.com/embed/${resolvedVideoId}`,
+              type: 'text/html',
+              width: 1280,
+              height: 720,
+            },
+          ]
+        : undefined,
     },
     twitter: {
-      card: 'summary',
+      card: 'summary_large_image',
       title: pageTitle,
       description: pageDescription,
+      images: imageUrl ? [imageUrl] : undefined,
     },
   };
 }

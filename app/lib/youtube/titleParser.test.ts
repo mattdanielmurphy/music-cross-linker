@@ -10,6 +10,7 @@ import {
   buildPageDescription,
   formatSlug,
   parseMusicTitle,
+  extractVideoId,
 } from './titleParser';
 
 describe('YouTube title parsing', () => {
@@ -154,5 +155,12 @@ describe('Page Title & Share Metadata Formatting', () => {
       secondary: 'Song Title',
       year: '1999',
     });
+  });
+
+  it('extracts YouTube video IDs from various URL formats', () => {
+    expect(extractVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+    expect(extractVideoId('https://youtu.be/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+    expect(extractVideoId('https://www.youtube.com/embed/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+    expect(extractVideoId('https://www.youtube.com/shorts/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
   });
 });

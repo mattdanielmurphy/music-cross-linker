@@ -258,3 +258,16 @@ export function buildPageDescription(artist?: string | null, track?: string | nu
   }
   return 'Search and cross-link tracks across YouTube, Spotify, and Apple Music.';
 }
+
+/**
+ * Extracts an 11-character YouTube video ID from various YouTube URL formats.
+ */
+export function extractVideoId(str?: string | null): string | null {
+  if (!str) return null;
+  const m =
+    str.match(/[?&]v=([\w-]{11})/) ||
+    str.match(/youtu\.be\/([\w-]{11})/) ||
+    str.match(/\/shorts\/([\w-]{11})/) ||
+    str.match(/\/embed\/([\w-]{11})/);
+  return m ? m[1] : null;
+}

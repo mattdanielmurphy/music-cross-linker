@@ -741,3 +741,116 @@ export async function getPlatformLinks(artist: string, title: string, country: s
     },
   };
 }
+
+export interface BestMediaMetadata {
+  imageUrl: string | null;
+  imageWidth?: number;
+  imageHeight?: number;
+  videoId: string | null;
+}
+
+/**
+ * Finds the highest resolution artwork (Apple Music 1200x1200bb, Spotify 640x640, or YouTube maxresdefault)
+ * and YouTube video ID for OpenGraph / Apple Messages preview cards.
+ */
+export async function resolveBestMediaMetadata(
+  artist?: string | null,
+  title?: string | null,
+  explicitVideoId?: string | null,
+  sourceUrl?: string | null
+): Promise<BestMediaMetadata> {
+  let videoId = explicitVideoId || null;
+  if (!videoId && sourceUrl) {
+    const m =
+      sourceUrl.match(/[?&]v=([\w-]{11})/) ||
+      sourceUrl.match(/youtu\.be\/([\w-]{11})/) ||
+      sourceUrl.match(/\/shorts\/([\w-]{11})/) ||
+      sourceUrl.match(/\/embed\/([\w-]{11})/);
+    if (m) videoId = m[1];
+  }
+
+  let imageUrl: string | null = null;
+  let imageWidth = 1200;
+  let imageHeight = 1200;
+
+  try {
+    let entityId: string | null = null;
+
+    if (sourceUrl) {
+      const byUrl = await sql`
+        SELECT entity_id FROM match_candidates WHERE candidate_url = ${sourceUrl} LIMIT 1
+      `;
+      if (byUrl[0]?.entity_id) entityId = byUrl[0].entity_id;
+    }
+
+    if (!entityId && (artist || title)) {
+      const fp = fingerprintFor(artist, title);
+      const byFp = await sql`
+        SELECT id FROM resolved_entities
+        WHERE regexp_replace(lower(coalesce(artist,'')||'|'||coalesce(title,'')), '[^a-z0-9|]', '', 'g') = ${fp}
+        ORDER BY created_at ASC LIMIT 1
+      `;
+      if (byFp[0]?.id) entityId = byFp[0].id;
+    }
+
+    if (entityId) {
+      const candidates = await sql`
+        SELECT mc.thumbnail_url, mc.platform, mc.confidence, mc.candidate_url, em.matched_url
+        FROM match_candidates mc
+        LEFT JOIN entity_matches em ON (em.entity_id = mc.entity_id AND em.platform = mc.platform)
+        WHERE mc.entity_id = ${entityId}
+        ORDER BY 
+          (CASE WHEN em.matched_url = mc.candidate_url THEN 1 ELSE 0 END) DESC,
+          mc.confidence DESC,
+          (CASE WHEN mc.platform = 'apple_music' THEN 1 WHEN mc.platform = 'spotify' THEN 2 ELSE 3 END) ASC,
+          mc.rank ASC
+      `;
+
+      if (!videoId) {
+        const ytCandidate = candidates.find((c) => c.platform === 'youtube' && c.candidate_url);
+        if (ytCandidate?.candidate_url) {
+          const match = ytCandidate.candidate_url.match(/(?:v=|youtu\.be\/|embed\/)([\w-]{11})/);
+          if (match) videoId = match[1];
+        }
+      }
+
+      for (const cand of candidates) {
+        if (!cand.thumbnail_url) continue;
+
+        if (cand.platform === 'apple_music') {
+          imageUrl = cand.thumbnail_url.replace(/\d+x\d+bb/, '1200x1200bb');
+          imageWidth = 1200;
+          imageHeight = 1200;
+          break;
+        } else if (cand.platform === 'spotify') {
+          imageUrl = cand.thumbnail_url;
+          imageWidth = 640;
+          imageHeight = 640;
+          break;
+        } else if (cand.platform === 'youtube' && !imageUrl) {
+          const m = cand.candidate_url?.match(/(?:v=|youtu\.be\/|embed\/)([\w-]{11})/);
+          const ytId = m ? m[1] : videoId;
+          if (ytId) {
+            imageUrl = `https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`;
+            imageWidth = 1280;
+            imageHeight = 720;
+          } else {
+            imageUrl = cand.thumbnail_url;
+            imageWidth = 480;
+            imageHeight = 360;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error in resolveBestMediaMetadata:', err);
+  }
+
+  if (!imageUrl && videoId) {
+    imageUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+    imageWidth = 1280;
+    imageHeight = 720;
+  }
+
+  return { imageUrl, imageWidth, imageHeight, videoId: videoId || null };
+}
