@@ -72,6 +72,10 @@ export const DEFAULT_PALETTE_CONFIG: Required<PaletteThemeConfig> = {
 const PALETTE_CACHE = new Map<string, PaletteTheme>();
 const MAX_CACHE_SIZE = 500;
 
+export function clearPaletteCache(): void {
+  PALETTE_CACHE.clear();
+}
+
 export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   h = ((h % 360) + 360) % 360;
   h /= 360;
