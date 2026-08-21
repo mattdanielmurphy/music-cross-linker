@@ -546,6 +546,8 @@ async function saveAutoMatch(entityId: string, platform: Platform, url: string, 
   `;
 }
 
+export type MediaType = 'track' | 'album';
+
 export interface PlatformResult {
   url: string;
   matchedBy: string | null;
@@ -553,6 +555,29 @@ export interface PlatformResult {
   /** True when the current match was manually picked and flagged "this isn't
    *  right, but it's the closest available". */
   uncertain?: boolean;
+  entityType?: MediaType;
+  artworkUrl?: string | null;
+  title?: string | null;
+  artist?: string | null;
+}
+
+export function reconcileEntityType(
+  initialType: MediaType,
+  explicitType: boolean,
+  matches: Array<{ platform: Platform; confidence?: Confidence | number | null; entityType?: MediaType; url?: string }>
+): MediaType {
+  if (explicitType) return initialType;
+
+  const validMatches = matches.filter(m => m.url && m.entityType && !m.url.includes('/search'));
+  const albumMatches = validMatches.filter(m => m.entityType === 'album');
+
+  // Promote to album if both Spotify and Apple Music matches are albums,
+  // or if all available high-confidence matches agree on album
+  if (albumMatches.length >= 2 || (validMatches.length === 1 && albumMatches.length === 1)) {
+    return 'album';
+  }
+
+  return initialType;
 }
 
 export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: string): Promise<PlatformResult> {
@@ -583,13 +608,34 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
         SET matched_url = EXCLUDED.matched_url, matched_by = 'auto', candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
     `;
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-    return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
+    const isAlbum = sourceUrl.includes('/album/') && !sourceUrl.includes('?i=');
+    return {
+      url: sourceUrl,
+      matchedBy: 'explicit',
+      candidates,
+      uncertain: false,
+      entityType: isAlbum ? 'album' : 'track',
+      artworkUrl: meta.thumbnail_url || null,
+      title: meta.title || null,
+      artist: meta.artist || null,
+    };
   }
 
   // Cache hit — reuse the previously auto/manually matched link for this entity.
   if (cached.apple_music) {
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-    return { url: cached.apple_music.url, matchedBy: cached.apple_music.matched_by, candidates, uncertain: cached.apple_music.url === sourceUrl || cached.apple_music.matched_by === 'explicit' ? false : cached.apple_music.uncertain };
+    const active = candidates.find((c: any) => c.candidate_url === cached.apple_music?.url) || candidates[0];
+    const isAlbum = active?.candidate_url?.includes('/album/') && !active?.candidate_url?.includes('?i=');
+    return {
+      url: cached.apple_music.url,
+      matchedBy: cached.apple_music.matched_by,
+      candidates,
+      uncertain: cached.apple_music.url === sourceUrl || cached.apple_music.matched_by === 'explicit' ? false : cached.apple_music.uncertain,
+      entityType: isAlbum ? 'album' : 'track',
+      artworkUrl: active?.thumbnail_url || null,
+      title: active?.title || null,
+      artist: active?.artist || null,
+    };
   }
 
   let appleUrl = `https://music.apple.com/${country.toLowerCase()}/search?term=${encodeURIComponent(searchTerm)}`;
@@ -598,6 +644,10 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
 
   let bestConfidence: Confidence = 'none';
   let bestCandidateId: string | null = null;
+  let bestEntityType: MediaType = 'track';
+  let bestArtworkUrl: string | null = null;
+  let bestTitle: string | null = null;
+  let bestArtist: string | null = null;
 
   if (itunesSearch?.results) {
     let rank = 1;
@@ -605,8 +655,11 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
       const rawUrl = r.trackViewUrl || r.collectionViewUrl;
       const candidateUrl = rawUrl ? rawUrl.split('?')[0] : null;
       if (candidateUrl) {
+        const isAlbumMatch = r.wrapperType === 'collection' || r.collectionType === 'Album' || (candidateUrl.includes('/album/') && !candidateUrl.includes('?i=') && r.kind !== 'song');
         const candTitle = r.trackName || r.collectionName;
         const confidence = classifyMatch(candTitle, r.artistName, cleanTitle, cleanArtist);
+        const artworkUrl = r.artworkUrl100 ? r.artworkUrl100.replace(/\d+x\d+bb/, '1200x1200bb') : null;
+
         const insertedRow = await sql`
           INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
           VALUES (${entityId}, 'apple_music', ${candidateUrl}, ${candTitle}, ${r.artistName}, ${r.artworkUrl100}, ${rank}, 'itunes_api', ${confidenceToNumeric(confidence)})
@@ -618,10 +671,18 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
           appleUrl = candidateUrl;
           bestConfidence = 'high';
           bestCandidateId = insertedRow[0].id;
+          bestEntityType = isAlbumMatch ? 'album' : 'track';
+          bestArtworkUrl = artworkUrl;
+          bestTitle = candTitle;
+          bestArtist = r.artistName;
         } else if (confidence === 'low' && bestConfidence === 'none') {
           appleUrl = candidateUrl;
           bestConfidence = 'low';
           bestCandidateId = insertedRow[0].id;
+          bestEntityType = isAlbumMatch ? 'album' : 'track';
+          bestArtworkUrl = artworkUrl;
+          bestTitle = candTitle;
+          bestArtist = r.artistName;
         }
         rank++;
       }
@@ -639,7 +700,15 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
   }
 
   const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-  return { url: appleUrl, matchedBy: bestConfidence === 'none' ? null : 'auto', candidates };
+  return {
+    url: appleUrl,
+    matchedBy: bestConfidence === 'none' ? null : 'auto',
+    candidates,
+    entityType: bestEntityType,
+    artworkUrl: bestArtworkUrl,
+    title: bestTitle,
+    artist: bestArtist,
+  };
 }
 
 export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: string): Promise<PlatformResult> {
@@ -678,17 +747,39 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
         SET matched_url = EXCLUDED.matched_url, matched_by = 'auto', candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
     `;
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-    return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
+    return {
+      url: sourceUrl,
+      matchedBy: 'explicit',
+      candidates,
+      uncertain: false,
+      entityType: isAlbum ? 'album' : 'track',
+      artworkUrl: meta.thumbnail_url || null,
+      title: meta.title || null,
+      artist: meta.artist || null,
+    };
   }
 
   if (cached.spotify) {
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-    return { url: cached.spotify.url, matchedBy: cached.spotify.matched_by, candidates, uncertain: cached.spotify.url === sourceUrl || cached.spotify.matched_by === 'explicit' ? false : cached.spotify.uncertain };
+    const active = candidates.find((c: any) => c.candidate_url === cached.spotify?.url) || candidates[0];
+    const isCachedAlbum = active?.candidate_url?.includes('/album/');
+    return {
+      url: cached.spotify.url,
+      matchedBy: cached.spotify.matched_by,
+      candidates,
+      uncertain: cached.spotify.url === sourceUrl || cached.spotify.matched_by === 'explicit' ? false : cached.spotify.uncertain,
+      entityType: isCachedAlbum ? 'album' : 'track',
+      artworkUrl: active?.thumbnail_url || null,
+      title: active?.title || null,
+      artist: active?.artist || null,
+    };
   }
 
   const result = await searchSpotifyViaSpotapi(searchTerm, isAlbum, cleanTitle, cleanArtist);
   let spotifyUrl: string;
   let matchedBy: string | null = null;
+  let spotifyMeta: { title: string | null; artist: string | null; thumbnail_url: string | null } | null = null;
+
   if (result) {
     spotifyUrl = result.url;
     if (spotifyUrl.includes('/album/')) isAlbum = true;
@@ -699,7 +790,7 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
       ? { title: result.title || cleanTitle, artist: result.artist || cleanArtist, thumbnail_url: result.thumbnail_url || null }
       : await fetchSpotifyMetadata(spotifyUrl);
     const parsed = parseSpotifyTitle(rawMeta.title || '');
-    const meta = {
+    spotifyMeta = {
       title: parsed.title ? cleanYouTubeTitle(parsed.title) : rawMeta.title,
       artist: rawMeta.artist || parsed.artist || null,
       thumbnail_url: rawMeta.thumbnail_url,
@@ -707,7 +798,7 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
 
     const inserted = await sql`
       INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
-      VALUES (${entityId}, 'spotify', ${spotifyUrl}, ${meta.title}, ${meta.artist}, ${meta.thumbnail_url}, 1, 'spotapi', ${confidenceToNumeric(result.confidence)})
+      VALUES (${entityId}, 'spotify', ${spotifyUrl}, ${spotifyMeta.title}, ${spotifyMeta.artist}, ${spotifyMeta.thumbnail_url}, 1, 'spotapi', ${confidenceToNumeric(result.confidence)})
       ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
         SET title = EXCLUDED.title, artist = EXCLUDED.artist, thumbnail_url = EXCLUDED.thumbnail_url, rank = EXCLUDED.rank, source = EXCLUDED.source, confidence = EXCLUDED.confidence
       RETURNING id
@@ -727,7 +818,16 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
   }
 
   const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'spotify' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-  return { url: spotifyUrl, matchedBy, candidates };
+  const isAlbumMatch = spotifyUrl.includes('/album/');
+  return {
+    url: spotifyUrl,
+    matchedBy,
+    candidates,
+    entityType: isAlbumMatch ? 'album' : 'track',
+    artworkUrl: spotifyMeta?.thumbnail_url || null,
+    title: spotifyMeta?.title || null,
+    artist: spotifyMeta?.artist || null,
+  };
 }
 
 export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: string): Promise<PlatformResult> {
@@ -752,101 +852,53 @@ export async function resolveYoutubePlatform(ctx: EntityContext, sourceUrl?: str
     }
     await saveAutoMatch(entityId, 'youtube', sourceUrl, candidateId);
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-    return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false };
+    return { url: sourceUrl, matchedBy: 'explicit', candidates, uncertain: false, entityType: isAlbum ? 'album' : 'track' };
   }
 
   if (cached.youtube) {
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-    return { url: cached.youtube.url, matchedBy: cached.youtube.matched_by, candidates };
+    return { url: cached.youtube.url, matchedBy: cached.youtube.matched_by, candidates, entityType: isAlbum ? 'album' : 'track' };
   }
 
-  const videos = await getTopVideos(cleanArtist, cleanTitle, isAlbum ? 'album' : 'track', 5);
-  
+  // Cross-link YouTube via existing match candidates in DB or fresh YouTube search
+  const candidates = await sql`
+    SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC
+  `;
+
+  if (candidates.length > 0) {
+    const best = candidates[0];
+    return { url: best.candidate_url, matchedBy: 'auto', candidates, entityType: isAlbum ? 'album' : 'track' };
+  }
+
+  const query = (cleanArtist && cleanArtist !== 'Unknown Artist') ? `${cleanArtist} - ${cleanTitle}` : cleanTitle;
+  const videos = await getTopVideos(query, cleanTitle, isAlbum ? 'album' : 'track', 5);
   let bestUrl: string | null = null;
-  let bestCandidateId: string | null = null;
-  let highestConfidence: Confidence = 'none';
 
-  for (let i = 0; i < videos.length; i++) {
-    const v = videos[i];
-    const candidateUrl = `https://www.youtube.com/watch?v=${v.id}`;
-    const confidence = classifyMatch(v.title, v.channel, cleanTitle, cleanArtist, isAlbum);
-    const numericConfidence = confidenceToNumeric(confidence);
-
-    const inserted = await sql`
-      INSERT INTO match_candidates (entity_id, platform, candidate_url, title, artist, thumbnail_url, rank, source, confidence)
-      VALUES (${entityId}, 'youtube', ${candidateUrl}, ${v.title || null}, ${v.channel || null}, ${v.thumbnail || null}, ${i + 1}, 'youtube_search', ${numericConfidence})
-      ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
-        SET title = EXCLUDED.title, artist = EXCLUDED.artist, thumbnail_url = EXCLUDED.thumbnail_url, rank = EXCLUDED.rank, source = 'youtube_search', confidence = EXCLUDED.confidence
-      RETURNING id
-    `;
-
-    if (confidence === 'high' && highestConfidence !== 'high') {
-      bestUrl = candidateUrl;
-      bestCandidateId = inserted[0].id;
-      highestConfidence = 'high';
-    } else if (confidence === 'low' && highestConfidence === 'none') {
-      bestUrl = candidateUrl;
-      bestCandidateId = inserted[0].id;
-      highestConfidence = 'low';
+  if (videos.length > 0) {
+    bestUrl = `https://www.youtube.com/watch?v=${videos[0].id}`;
+    let rank = 1;
+    for (const v of videos) {
+      const vUrl = `https://www.youtube.com/watch?v=${v.id}`;
+      const conf = rank === 1 ? 1 : 0.8;
+      await sql`
+        INSERT INTO match_candidates (entity_id, platform, candidate_url, title, thumbnail_url, rank, source, confidence)
+        VALUES (${entityId}, 'youtube', ${vUrl}, ${v.title || null}, ${v.thumbnail || null}, ${rank}, 'youtube_search', ${conf})
+        ON CONFLICT (entity_id, platform, candidate_url) DO UPDATE
+          SET title = EXCLUDED.title, thumbnail_url = EXCLUDED.thumbnail_url, rank = EXCLUDED.rank, source = EXCLUDED.source, confidence = EXCLUDED.confidence
+      `;
+      rank++;
     }
+    await saveAutoMatch(entityId, 'youtube', bestUrl);
   }
 
-  if (bestUrl) {
-    await saveAutoMatch(entityId, 'youtube', bestUrl, bestCandidateId);
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-    return { url: bestUrl, matchedBy: 'auto', candidates };
-  } else {
-    const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-    return { url: '', matchedBy: null, candidates };
-  }
-}
-
-/**
- * Convenience wrapper that resolves everything in parallel and returns the same
- * shape the old monolithic getPlatformLinks used to. Prefer using resolveEntity +
- * the individual resolve*Platform functions directly when you want independent
- * streaming/loading per platform (see TrackView).
- */
-export async function getPlatformLinks(artist: string, title: string, country: string = 'CA', sourceUrl?: string) {
-  const ctx = await resolveEntity(artist, title, country, sourceUrl);
-  const [apple, spotify, youtube] = await Promise.all([
-    resolveApplePlatform(ctx, sourceUrl),
-    resolveSpotifyPlatform(ctx, sourceUrl),
-    resolveYoutubePlatform(ctx, sourceUrl),
-  ]);
-
-  const overrides = await sql`SELECT platform, matched_url, matched_by FROM entity_matches WHERE entity_id = ${ctx.entityId}`;
-  let appleUrl = apple.url, appleMatchedBy: string | null = apple.matchedBy;
-  let spotifyUrl = spotify.url, spotifyMatchedBy: string | null = spotify.matchedBy;
-  let youtubeUrl = youtube.url, youtubeMatchedBy: string | null = youtube.matchedBy;
-  for (const override of overrides) {
-    if (override.matched_by === 'manual') {
-      if (override.platform === 'apple_music') { appleUrl = override.matched_url; appleMatchedBy = override.matched_by; }
-      if (override.platform === 'spotify') { spotifyUrl = override.matched_url; spotifyMatchedBy = override.matched_by; }
-      if (override.platform === 'youtube') { youtubeUrl = override.matched_url; youtubeMatchedBy = override.matched_by; }
-    }
-  }
-
-  return {
-    appleUrl,
-    spotifyUrl,
-    youtubeUrl,
-    entityId: ctx.entityId,
-    isAlbum: ctx.isAlbum,
-    country: ctx.country,
-    candidates: [...apple.candidates, ...spotify.candidates, ...youtube.candidates],
-    matches: {
-      apple_music: { url: appleUrl, matched_by: appleMatchedBy },
-      spotify: { url: spotifyUrl, matched_by: spotifyMatchedBy },
-      youtube: { url: youtubeUrl, matched_by: youtubeMatchedBy },
-    },
-  };
+  const updatedCandidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'youtube' ORDER BY confidence DESC NULLS LAST, rank ASC`;
+  return { url: bestUrl || '', matchedBy: bestUrl ? 'auto' : null, candidates: updatedCandidates, entityType: isAlbum ? 'album' : 'track' };
 }
 
 export interface BestMediaMetadata {
   imageUrl: string | null;
-  imageWidth?: number;
-  imageHeight?: number;
+  imageWidth: number;
+  imageHeight: number;
   videoId: string | null;
 }
 
@@ -940,6 +992,23 @@ export async function resolveBestMediaMetadata(
             imageWidth = 480;
             imageHeight = 360;
           }
+        }
+      }
+    }
+
+    // Fast inline fallback: if no artwork in DB yet, query iTunes Search for instant 1200px artwork
+    if (!imageUrl && (artist || title)) {
+      const term = artist && artist !== 'Unknown Artist' ? `${artist} ${title || ''}`.trim() : (title || '').trim();
+      if (term) {
+        const itunesRes = await fetch(
+          `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song,album&limit=1`,
+          { signal: AbortSignal.timeout(2000) }
+        ).then(r => r.json()).catch(() => null);
+
+        if (itunesRes?.results?.[0]?.artworkUrl100) {
+          imageUrl = itunesRes.results[0].artworkUrl100.replace(/\d+x\d+bb/, '1200x1200bb');
+          imageWidth = 1200;
+          imageHeight = 1200;
         }
       }
     }

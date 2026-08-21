@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { IconAlertTriangle, IconCheck } from '@tabler/icons-react';
 import CandidateList from './CandidateList';
 
@@ -46,7 +46,7 @@ export default function PlatformButton({
   // since it may not exist in the `candidates` prop below — that's just a
   // stale snapshot taken at the initial server render and never refetched.
   const [pickedCandidate, setPickedCandidate] = useState<any>(null);
-  const { loadPaletteFromArtwork } = useDynamicTheme();
+  const { loadPaletteFromArtwork, reportPlatformMatch } = useDynamicTheme();
 
   const handleUpdateMatch = (_platform: string, newUrl: string, manual: boolean, candidate?: any, isUncertain?: boolean) => {
     setCurrentUrl(newUrl);
@@ -56,9 +56,32 @@ export default function PlatformButton({
     if (candidate?.thumbnail_url) {
       loadPaletteFromArtwork(candidate.thumbnail_url);
     }
+    if (candidate) {
+      const isAlbum = newUrl.includes('/album/') && !newUrl.includes('?i=');
+      reportPlatformMatch({
+        platform,
+        url: newUrl,
+        entityType: isAlbum ? 'album' : 'track',
+        artworkUrl: candidate.thumbnail_url || null,
+        confidence: candidate.confidence,
+      });
+    }
   };
 
   const active = pickedCandidate || candidates.find((c: any) => c.candidate_url === currentUrl) || candidates[0];
+
+  useEffect(() => {
+    if (active) {
+      const isAlbum = active.candidate_url?.includes('/album/') && !active.candidate_url?.includes('?i=');
+      reportPlatformMatch({
+        platform,
+        url: active.candidate_url || currentUrl,
+        entityType: isAlbum ? 'album' : 'track',
+        artworkUrl: active.thumbnail_url || null,
+        confidence: active.confidence,
+      });
+    }
+  }, [active, platform, currentUrl, reportPlatformMatch]);
   const Icon = ICONS[platform];
 
   return (

@@ -70,7 +70,7 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
   }
 
   return (
-    <DynamicThemeProvider initialPalette={initialPalette} initialArtworkUrl={initialArtworkUrl}>
+    <DynamicThemeProvider initialPalette={initialPalette} initialArtworkUrl={initialArtworkUrl} initialType={ctx.isAlbum ? 'album' : 'track'}>
       <div className="main-content">
         <div className="track-card">
           <header className="track-header">

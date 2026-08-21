@@ -17,18 +17,18 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg-color: #ffffff;
-    --surface-bg: #f4f4f6;
-    --card-border: rgba(0, 0, 0, 0.1);
-    --text-primary: #08090a;
-    --text-secondary: #55555d;
-    --input-bg: #ffffff;
-    --input-border: rgba(0, 0, 0, 0.2);
-    --btn-secondary-bg: rgba(0, 0, 0, 0.05);
-    --btn-secondary-border: rgba(0, 0, 0, 0.12);
-    --card-item-bg: #ffffff;
-    --card-item-selected-bg: rgba(0, 0, 0, 0.08);
-    --accent-color: #000000;
+    --bg-color: #08090a;
+    --surface-bg: #121318;
+    --card-border: rgba(255, 255, 255, 0.1);
+    --text-primary: #ffffff;
+    --text-secondary: #87888c;
+    --input-bg: rgba(0, 0, 0, 0.4);
+    --input-border: rgba(255, 255, 255, 0.15);
+    --btn-secondary-bg: rgba(255, 255, 255, 0.08);
+    --btn-secondary-border: rgba(255, 255, 255, 0.12);
+    --card-item-bg: rgba(255, 255, 255, 0.04);
+    --card-item-selected-bg: rgba(255, 255, 255, 0.12);
+    --accent-color: #ffffff;
   }
 }
 
@@ -120,16 +120,16 @@ body {
   font-weight: 800;
   line-height: 1.2;
   margin-bottom: 0.35rem;
-  color: var(--c-text-title, var(--text-primary));
-  text-shadow: var(--c-text-glow, none);
+  color: var(--c-text-title, var(--text-primary, #ffffff));
+  text-shadow: var(--c-text-glow, 0 2px 12px rgba(0, 0, 0, 0.7));
   transition: color 0.3s ease, text-shadow 0.3s ease;
 }
 
 .track-artist {
   font-size: 2rem;
   font-weight: 400;
-  color: var(--c-text-artist, rgba(255, 255, 255, 0.88));
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+  color: var(--c-text-artist, var(--text-secondary, rgba(255, 255, 255, 0.88)));
+  text-shadow: var(--c-text-artist-shadow, 0 2px 10px rgba(0, 0, 0, 0.6));
   margin: 0;
   margin-top: 0.15rem;
   transition: color 0.3s ease;
