@@ -425,16 +425,31 @@ function hasTitle(r: any, titleSlug: string) {
   return slugify(coreTitle((r.trackName || '').replace(/\s*[(\[].*$/, ''))) === titleSlug;
 }
 
+/** The artist's catalogue, for songs that keyword search misses. Cached for a day like searches. */
+async function artistCatalogueSongs(artistSlug: string, country: string) {
+  const cc = country.toLowerCase();
+  const getJson = (url: string) => fetch(url, { next: { revalidate: 86400 } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const artists = await getJson(`https://itunes.apple.com/search?term=${encodeURIComponent(artistSlug.replace(/-/g, ' '))}&entity=musicArtist&country=${cc}&limit=5`);
+  const artist = (artists?.results || []).find((r: any) => slugify(r.artistName || '') === artistSlug);
+  if (!artist) return [];
+  const songs = await getJson(`https://itunes.apple.com/lookup?id=${artist.artistId}&entity=song&country=${cc}&limit=200`);
+  return (songs?.results || []).filter((r: any) => r.kind === 'song' && r.trackViewUrl);
+}
+
 /**
  * The artist's own versions of a song. iTunes sometimes buries a song under
- * title-alikes by others, so a second search walks the named album's tracks.
+ * title-alikes by others, so later steps try the named album, then the catalogue.
  */
 async function findArtistSongs(artistSlug: string, albumSlug: string | null | undefined, titleSlug: string, country: string) {
   const words = (s: string) => s.replace(/-/g, ' ');
   const matches = (rows: any[]) => rows.filter((r) => isByArtist(r, artistSlug) && hasTitle(r, titleSlug));
   const found = matches(await searchItunesSongs(`${words(artistSlug)} ${words(titleSlug)}`, country));
-  if (found.length || !albumSlug || albumSlug === NO_ALBUM_SLUG) return found;
-  return matches(await searchItunesSongs(`${words(artistSlug)} ${words(albumSlug)}`, country));
+  if (found.length) return found;
+  if (albumSlug && albumSlug !== NO_ALBUM_SLUG) {
+    const onAlbum = matches(await searchItunesSongs(`${words(artistSlug)} ${words(albumSlug)}`, country));
+    if (onAlbum.length) return onAlbum;
+  }
+  return matches(await artistCatalogueSongs(artistSlug, country));
 }
 
 export interface SongMatch {
