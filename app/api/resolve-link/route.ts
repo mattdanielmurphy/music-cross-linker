@@ -1,7 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchOdesliByUrl } from '../../lib/odesli';
 import { cleanYouTubeTitle, parseYouTubeTitle } from '../../lib/youtube/titleParser';
-import { getSlugForUrl } from '../../lib/slugStore';
+import { getSlugForTrack, getSlugForUrl } from '../../lib/slugStore';
+import { lookupSong } from '../../lib/urlResolver';
+import { slugify } from '../../lib/slugify';
+
+/**
+ * Songs get /artist/album/track. A YouTube video only counts as a song when a
+ * real song has its exact title (it could be a full-album upload); Spotify and
+ * Apple say what they are, so those stay songs even when iTunes doesn't know them.
+ */
+async function slugFor(lookupUrl: string, title: string, artistName: string, videoId: string | undefined, album?: string) {
+  const isKnownSong = !videoId && /spotify\.com\/track\/|music\.apple\.com\/.*(\/song\/|[?&]i=\d)/.test(lookupUrl);
+  const isPlaylist = /[?&]list=/.test(lookupUrl) || /full album/i.test(title);
+
+  if (artistName && !isPlaylist && (isKnownSong || videoId)) {
+    const song = album ? null : await lookupSong(slugify(artistName), null, slugify(title));
+    if (song || album || isKnownSong) {
+      return getSlugForTrack(lookupUrl, song?.title || title, song?.artist || artistName, album || song?.album || null, videoId);
+    }
+  }
+  return getSlugForUrl(lookupUrl, title, artistName, videoId);
+}
 
 
 /**
@@ -46,7 +66,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const slug = getSlugForUrl(lookupUrl, title, artistName, videoId || undefined);
+    const slug = await slugFor(lookupUrl, title, artistName, videoId || undefined, odesli.album);
     return NextResponse.json({ slug });
   }
 
@@ -65,7 +85,7 @@ export async function POST(req: NextRequest) {
       const parsed = parseYouTubeTitle(rawVideoTitle, channelName || undefined);
       const artistName = parsed.artist || '';
       const title = parsed.title;
-      const slug = getSlugForUrl(lookupUrl, title, artistName, videoId);
+      const slug = await slugFor(lookupUrl, title, artistName, videoId);
       return NextResponse.json({ slug });
     }
 

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { slugify } from './slugify';
+import { buildTrackPath, slugify } from './slugify';
 
 const isVercel = process.env.VERCEL === '1';
 const DATA_PATH = isVercel 
@@ -105,6 +105,15 @@ export function getSlugForUrl(targetUrl: string, title: string, artistName: stri
   saveStore(store);
 
   return uniqueSlug;
+}
+
+/** Songs always get /artist/album/track, so a same-named album can't claim the link. */
+export function getSlugForTrack(targetUrl: string, title: string, artistName: string, album: string | null, videoId?: string): string {
+  const store = getStore();
+  const slug = buildTrackPath(artistName, album, title);
+  store[slug] = { slug, targetUrl, artistName, title, videoId };
+  saveStore(store);
+  return slug;
 }
 
 export function getRecordBySlug(slug: string): SlugRecord | null {

@@ -13,12 +13,13 @@ import PlayerSkeleton from './PlayerSkeleton';
 import LoadingChip from './LoadingChip';
 import TypeBadge from './TypeBadge';
 
-export default async function TrackView({ artist, track, videoId: explicitVideoId, sourceUrl, searchParams }: any) {
+export default async function TrackView({ artist, track, album, videoId: explicitVideoId, sourceUrl, searchParams }: any) {
   const typeHint = (searchParams?.type === 'album' || searchParams?.type === 'track') ? searchParams.type : null;
 
   // If track looks like a slug (lowercase, hyphens), format it; otherwise use as-is (already a title)
   const isSlugLike = /^[a-z0-9]+(-[a-z0-9]+)*$/.test(track);
-  const a = artist ? formatSlug(artist) : '';
+  const isSong = !!album || searchParams?.type === 'track';
+  const a = !artist ? '' : isSong ? artist : formatSlug(artist);
   const t = isSlugLike ? formatSlug(track) : track;
 
   let country = searchParams?.country;
@@ -33,7 +34,7 @@ export default async function TrackView({ artist, track, videoId: explicitVideoI
   // via Suspense as soon as each resolves — the page shell renders instantly.
   let ctx;
   try {
-    ctx = await resolveEntity(a, t, country || 'CA', sourceUrl, typeHint);
+    ctx = await resolveEntity(a, t, country || 'CA', sourceUrl, typeHint, album);
   } catch (e) {
     console.error('Failed to resolve entity:', e);
     ctx = {

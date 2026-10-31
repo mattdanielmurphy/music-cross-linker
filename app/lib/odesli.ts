@@ -2,6 +2,7 @@ import { fetchSpotifyMetadata } from './urlResolver';
 
 export interface OdesliResult {
   title?: string;
+  album?: string;
   artistName?: string;
   thumbnailUrl?: string;
   appleUrl?: string;
@@ -23,7 +24,8 @@ export async function fetchOdesliByUrl(sourceUrl: string): Promise<OdesliResult 
       
       // Extract country code (e.g. 'ca') and entity ID
       const country = pathParts[1] && pathParts[1].length === 2 ? pathParts[1] : 'us';
-      const id = pathParts.find((part) => /^\d+$/.test(part) || part.startsWith('id'))?.replace('id', '');
+      const trackId = url.searchParams.get('i');
+      const id = trackId || pathParts.find((part) => /^\d+$/.test(part) || part.startsWith('id'))?.replace('id', '');
 
       if (id) {
         const lookup = await fetch(`https://itunes.apple.com/lookup?id=${id}&country=${country}`)
@@ -33,11 +35,12 @@ export async function fetchOdesliByUrl(sourceUrl: string): Promise<OdesliResult 
         const item = lookup?.results?.[0];
         if (item && item.artistName) {
           return {
-            title: item.collectionName || item.trackName,
+            title: (trackId ? item.trackName : item.collectionName) || item.trackName,
             artistName: item.artistName,
             thumbnailUrl: item.artworkUrl100,
-            type: item.wrapperType === 'collection' || item.collectionType ? 'album' : 'track',
-            appleUrl: item.collectionViewUrl || item.trackViewUrl,
+            type: item.wrapperType === 'track' ? 'track' : 'album',
+            album: item.collectionName,
+            appleUrl: item.trackViewUrl || item.collectionViewUrl,
             originalUrl: sourceUrl,
           };
         }

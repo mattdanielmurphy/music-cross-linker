@@ -2,6 +2,7 @@ import sql from './db';
 import * as cheerio from 'cheerio';
 import { cleanYouTubeTitle, parseYouTubeTitle, parseSpotifyTitle } from './youtube/titleParser';
 import { getTopVideos } from './youtube';
+import { cleanAppleUrl, isAlbumUrl, slugify, NO_ALBUM_SLUG } from './slugify';
 
 // ---------------------------------------------------------------------------
 // Shared match confidence classification.
@@ -25,6 +26,7 @@ function normalizeForMatch(s: string | null | undefined): string {
   if (!s) return '';
   return s
     .toLowerCase()
+    .replace(/['’]/g, '')
     .replace(/[\(\[\{].*?[\)\]\}]/g, ' ') // strip parenthetical/bracketed content
     .replace(/(?<=\d)\s*[\-–—]\s*(?=\d)/g, '-') // preserve hyphenated number ranges e.g. 85-92
     .replace(/[^a-z0-9]+/g, ' ')
@@ -240,7 +242,8 @@ async function fetchAppleMusicMetadata(url: string) {
     const parsed = new URL(urlStr);
     const pathParts = parsed.pathname.split('/');
     const country = pathParts[1] && pathParts[1].length === 2 ? pathParts[1] : 'us';
-    const id = pathParts.find((part) => /^\d+$/.test(part) || part.startsWith('id'))?.replace('id', '');
+    const trackId = parsed.searchParams.get('i');
+    const id = trackId || pathParts.find((part) => /^\d+$/.test(part) || part.startsWith('id'))?.replace('id', '');
 
     if (!id) return { title: null, artist: null, thumbnail_url: null };
 
@@ -251,7 +254,7 @@ async function fetchAppleMusicMetadata(url: string) {
     const item = lookup?.results?.[0];
     if (item) {
       return {
-        title: item.collectionName || item.trackName || null,
+        title: (trackId ? item.trackName : item.collectionName) || item.trackName || null,
         artist: item.artistName || null,
         thumbnail_url: item.artworkUrl100 || null,
       };
@@ -386,6 +389,41 @@ async function searchSpotifyViaSpotapi(
   return validPrimary || validFallback || null;
 }
 
+export interface SongMatch {
+  artist: string;
+  album: string | null;
+  title: string;
+}
+
+/** Lower is better: exact album, then deluxe/remaster editions of it, then any other. */
+function albumRank(collectionName: string | null | undefined, albumSlug: string | null | undefined) {
+  if (!albumSlug || albumSlug === NO_ALBUM_SLUG) return 0;
+  const slug = slugify(collectionName || '');
+  if (slug === albumSlug) return 0;
+  return slug.startsWith(`${albumSlug}-`) ? 1 : 2;
+}
+
+/**
+ * Finds the real song behind slugs, songs only (iTunes `entity=song`), so names
+ * get their true spelling and punctuation back. The album only ranks results: a
+ * wrong album segment still lands on the song. Null when no song has that title.
+ */
+export async function lookupSong(artistSlug: string, albumSlug: string | null, trackSlug: string, country = 'CA'): Promise<SongMatch | null> {
+  const term = `${artistSlug} ${trackSlug}`.replace(/-/g, ' ');
+  const data = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&country=${country.toLowerCase()}&limit=50`)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+
+  const songs = (data?.results || [])
+    .filter((r: any) => r.kind === 'song' && slugify(r.trackName || '') === trackSlug && `-${slugify(r.artistName || '')}-`.includes(`-${artistSlug}-`))
+    .map((r: any) => ({ r, rank: albumRank(r.collectionName, albumSlug) }))
+    .sort((a: any, b: any) => a.rank - b.rank);
+
+  const best = songs[0]?.r;
+  if (!best) return null;
+  return { artist: best.artistName, album: best.collectionName || null, title: best.trackName };
+}
+
 export interface CachedMatch {
   url: string;
   matched_by: string | null;
@@ -405,6 +443,8 @@ export interface EntityContext {
   canonicalTitle?: string | null;
   canonicalArtist?: string | null;
   typeHint?: 'album' | 'track' | null;
+  /** Slug of the album a song URL named; prefers that album's version of the song. */
+  albumSlug?: string | null;
   /** Matches already known for this entity (from a previous resolution), keyed by platform. */
   cached: Partial<Record<Platform, CachedMatch>>;
 }
@@ -424,7 +464,8 @@ export async function resolveEntity(
   title: string,
   country: string,
   sourceUrl?: string,
-  typeHint?: 'album' | 'track' | null
+  typeHint?: 'album' | 'track' | null,
+  albumSlug?: string | null
 ): Promise<EntityContext> {
   const countryCode = country.toUpperCase();
   const cleanArtistRaw = (artist || '').trim();
@@ -464,11 +505,23 @@ export async function resolveEntity(
   let entityId: string | null = null;
   const cached: Partial<Record<Platform, CachedMatch>> = {};
 
+  // A song never shares an entity with a same-named album (or the same title on
+  // another album): the fingerprint can't tell those apart, so songs get their
+  // own entity keyed by a `track:` source_url and are hidden from fingerprint lookups.
+  const trackKey = typeHint === 'track'
+    ? `track:${slugify(cleanArtist)}/${albumSlug || ''}/${slugify(cleanTitle)}`
+    : null;
+
+  if (trackKey) {
+    const byKey = await sql`SELECT id FROM resolved_entities WHERE source_url = ${trackKey} ORDER BY created_at ASC LIMIT 1`;
+    if (byKey[0]?.id) entityId = byKey[0].id;
+  }
+
   // 1. Try to find a matching URL directly among previously cached candidates —
   //    handles the case where the exact URL pasted was seen before as a *match*
   //    rather than the original source (e.g. we found this Spotify link while
   //    resolving a YouTube video previously).
-  if (sourceUrl) {
+  if (!trackKey && sourceUrl) {
     const byUrl = await sql`
       SELECT entity_id FROM match_candidates WHERE candidate_url = ${sourceUrl} LIMIT 1
     `;
@@ -483,10 +536,11 @@ export async function resolveEntity(
   // ever lowercased, corrupting almost every real artist/title). We don't have
   // ALTER privileges on this table to fix the column itself, so we recompute
   // the correct fingerprint inline in the query instead.
-  if (!entityId && fingerprint) {
+  if (!trackKey && !entityId && fingerprint) {
     const byFingerprint = await sql`
       SELECT id FROM resolved_entities
       WHERE regexp_replace(lower(coalesce(artist,'')||'|'||coalesce(title,'')), '[^a-z0-9|]', '', 'g') = ${fingerprint}
+        AND source_url NOT LIKE 'track:%'
       ORDER BY created_at ASC LIMIT 1
     `;
     if (byFingerprint[0]?.id) entityId = byFingerprint[0].id;
@@ -497,7 +551,7 @@ export async function resolveEntity(
 
   if (entityId) {
     if (!typeHint) {
-      const albumMatch = await sql`SELECT entity_id FROM match_candidates WHERE entity_id = ${entityId} AND candidate_url LIKE '%/album/%' LIMIT 1`;
+      const albumMatch = await sql`SELECT entity_id FROM match_candidates WHERE entity_id = ${entityId} AND candidate_url LIKE '%/album/%' AND candidate_url NOT LIKE '%?i=%' LIMIT 1`;
       if (albumMatch.length > 0) isAlbum = true;
     }
 
@@ -508,7 +562,7 @@ export async function resolveEntity(
       canonicalArtist = canonical[0].artist || (parsed.artist ? parsed.artist : canonical[0].artist);
     }
 
-    if (!typeHint) {
+    if (!typeHint || trackKey) {
       const matches = await sql`
         SELECT platform, matched_url, matched_by, uncertain FROM entity_matches WHERE entity_id = ${entityId}
       `;
@@ -518,12 +572,12 @@ export async function resolveEntity(
     }
 
     if (!isAlbum) {
-      isAlbum = Object.values(cached).some((m) => m.url?.includes('/album/'));
+      isAlbum = Object.values(cached).some((m) => isAlbumUrl(m.url));
     }
   } else {
     const inserted = await sql`
       INSERT INTO resolved_entities (source_url, source_platform, title, artist)
-      VALUES (${sourceUrl || ''}, ${sourcePlatform}, ${cleanTitle}, ${cleanArtist})
+      VALUES (${trackKey || sourceUrl || ''}, ${sourcePlatform}, ${cleanTitle}, ${cleanArtist})
       RETURNING id
     `;
     entityId = inserted[0].id;
@@ -532,7 +586,7 @@ export async function resolveEntity(
   if (typeHint === 'album') isAlbum = true;
   else if (typeHint === 'track') isAlbum = false;
 
-  return { entityId: entityId as string, isAlbum, country: countryCode, sourcePlatform, cleanArtist, cleanTitle, searchTerm, cached, canonicalTitle, canonicalArtist, typeHint };
+  return { entityId: entityId as string, isAlbum, country: countryCode, sourcePlatform, cleanArtist, cleanTitle, searchTerm, cached, canonicalTitle, canonicalArtist, typeHint, albumSlug };
 }
 
 /** Persist the auto-picked match for a platform, without clobbering a manual override. */
@@ -608,7 +662,7 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
         SET matched_url = EXCLUDED.matched_url, matched_by = 'auto', candidate_id = EXCLUDED.candidate_id, updated_at = now(), uncertain = false
     `;
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY confidence DESC NULLS LAST, rank ASC`;
-    const isAlbum = sourceUrl.includes('/album/') && !sourceUrl.includes('?i=');
+    const isAlbum = isAlbumUrl(sourceUrl);
     return {
       url: sourceUrl,
       matchedBy: 'explicit',
@@ -625,7 +679,7 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
   if (cached.apple_music) {
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     const active = candidates.find((c: any) => c.candidate_url === cached.apple_music?.url) || candidates[0];
-    const isAlbum = active?.candidate_url?.includes('/album/') && !active?.candidate_url?.includes('?i=');
+    const isAlbum = isAlbumUrl(active?.candidate_url);
     return {
       url: cached.apple_music.url,
       matchedBy: cached.apple_music.matched_by,
@@ -639,8 +693,18 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
   }
 
   let appleUrl = `https://music.apple.com/${country.toLowerCase()}/search?term=${encodeURIComponent(searchTerm)}`;
-  const itunesSearch = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&media=music&entity=song,album&country=${country.toLowerCase()}&limit=5`)
+  const songOnly = ctx.typeHint === 'track';
+  const itunesSearch = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&media=music&entity=${songOnly ? 'song' : 'song,album'}&country=${country.toLowerCase()}&limit=${songOnly ? 25 : 5}`)
     .then(r => r.json()).catch(() => null);
+
+  if (songOnly && itunesSearch?.results) {
+    itunesSearch.results = itunesSearch.results
+      .filter((r: any) => r.kind === 'song' && r.trackViewUrl)
+      .map((r: any) => ({ r, rank: albumRank(r.collectionName, ctx.albumSlug) }))
+      .sort((a: any, b: any) => a.rank - b.rank)
+      .slice(0, 5)
+      .map(({ r }: any) => r);
+  }
 
   let bestConfidence: Confidence = 'none';
   let bestCandidateId: string | null = null;
@@ -653,9 +717,9 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
     let rank = 1;
     for (const r of itunesSearch.results) {
       const rawUrl = r.trackViewUrl || r.collectionViewUrl;
-      const candidateUrl = rawUrl ? rawUrl.split('?')[0] : null;
+      const candidateUrl = rawUrl ? cleanAppleUrl(rawUrl) : null;
       if (candidateUrl) {
-        const isAlbumMatch = r.wrapperType === 'collection' || r.collectionType === 'Album' || (candidateUrl.includes('/album/') && !candidateUrl.includes('?i=') && r.kind !== 'song');
+        const isAlbumMatch = r.wrapperType === 'collection' || r.collectionType === 'Album' || (isAlbumUrl(candidateUrl) && r.kind !== 'song');
         const candTitle = r.trackName || r.collectionName;
         const confidence = classifyMatch(candTitle, r.artistName, cleanTitle, cleanArtist);
         const artworkUrl = r.artworkUrl100 ? r.artworkUrl100.replace(/\d+x\d+bb/, '1200x1200bb') : null;
@@ -775,7 +839,13 @@ export async function resolveSpotifyPlatform(ctx: EntityContext, sourceUrl?: str
     };
   }
 
-  const result = await searchSpotifyViaSpotapi(searchTerm, isAlbum, cleanTitle, cleanArtist);
+  const baseUrl = process.env.SPOTAPI_URL;
+  const trackResult = ctx.typeHint === 'track' && baseUrl
+    ? await callSpotapiEntity(baseUrl, 'search-track', searchTerm, cleanTitle, cleanArtist)
+    : null;
+  const result = ctx.typeHint === 'track'
+    ? (trackResult?.url ? trackResult : null)
+    : await searchSpotifyViaSpotapi(searchTerm, isAlbum, cleanTitle, cleanArtist);
   let spotifyUrl: string;
   let matchedBy: string | null = null;
   let spotifyMeta: { title: string | null; artist: string | null; thumbnail_url: string | null } | null = null;

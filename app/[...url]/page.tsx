@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getRecordBySlug, findRecordByTargetUrlOrVideo } from '../lib/slugStore';
@@ -10,9 +11,28 @@ import {
   buildPageDescription,
   extractVideoId,
 } from '../lib/youtube/titleParser';
-import { resolveBestMediaMetadata } from '../lib/urlResolver';
+import { lookupSong, resolveBestMediaMetadata } from '../lib/urlResolver';
+import { normalizeSegment, slugify } from '../lib/slugify';
 
 const MUSIC_HOSTS = ['youtube.com', 'youtu.be', 'music.apple.com', 'spotify.com', 'soundcloud.com'];
+
+/**
+ * /artist/album/track and the older /track/artist/title both always mean a song.
+ * Returns its true names when iTunes knows it, else names rebuilt from the slugs.
+ */
+const resolveSongPath = cache(async (segments: string[]) => {
+  const isLegacy = segments.length === 3 && segments[0] === 'track';
+  if (segments.length !== 3 || segments[0] === 'album') return null;
+
+  const [artistSlug, albumSlug, trackSlug] = (isLegacy ? [segments[1], '', segments[2]] : segments).map(normalizeSegment);
+  const song = await lookupSong(artistSlug, albumSlug || null, trackSlug);
+  return {
+    slugKey: `${artistSlug}/${albumSlug}/${trackSlug}`,
+    artist: song?.artist || formatSlug(artistSlug),
+    title: song?.title || formatSlug(trackSlug),
+    albumSlug: song?.album ? slugify(song.album) : albumSlug,
+  };
+});
 
 export async function generateMetadata({
   params,
@@ -101,7 +121,8 @@ export async function generateMetadata({
     };
   }
 
-  const slugKey = urlSegments.join('/');
+  const songPath = await resolveSongPath(urlSegments);
+  const slugKey = songPath?.slugKey || urlSegments.join('/');
   const record = getRecordBySlug(slugKey);
 
   let artist: string | null = null;
@@ -111,7 +132,10 @@ export async function generateMetadata({
   if (record) {
     artist = record.artistName;
     track = record.title;
-  } else if (urlSegments.length === 3 && (urlSegments[0] === 'album' || urlSegments[0] === 'track')) {
+  } else if (songPath) {
+    artist = songPath.artist;
+    track = songPath.title;
+  } else if (urlSegments.length === 3 && urlSegments[0] === 'album') {
     artist = formatSlug(urlSegments[1]);
     track = formatSlug(urlSegments[2]);
   } else if (urlSegments.length === 2) {
@@ -233,10 +257,24 @@ export default async function Page({
   }
 
   // Check store record for 1-segment or 2-segment routes (e.g. 'daniel-lanois/belladonna')
-  const slugKey = urlSegments.join('/');
+  const songPath = await resolveSongPath(urlSegments);
+  const slugKey = songPath?.slugKey || urlSegments.join('/');
   const record = getRecordBySlug(slugKey);
 
   const videoIdFromQuery = typeof resolvedSearchParams.v === 'string' ? resolvedSearchParams.v : null;
+
+  if (songPath) {
+    return (
+      <TrackView
+        artist={record?.artistName || songPath.artist}
+        track={record?.title || songPath.title}
+        album={songPath.albumSlug}
+        videoId={videoIdFromQuery || record?.videoId}
+        sourceUrl={record?.targetUrl}
+        searchParams={{ ...resolvedSearchParams, type: 'track' }}
+      />
+    );
+  }
 
   if (record) {
     return (
@@ -254,8 +292,8 @@ export default async function Page({
     return <TrackView artist="" track={urlSegments[0]} searchParams={resolvedSearchParams} />;
   } else if (urlSegments.length === 2) {
     return <TrackView artist={urlSegments[0]} track={urlSegments[1]} searchParams={resolvedSearchParams} />;
-  } else if (urlSegments.length === 3 && (urlSegments[0] === 'album' || urlSegments[0] === 'track')) {
-    const typeHint = urlSegments[0] as 'album' | 'track';
+  } else if (urlSegments.length === 3 && urlSegments[0] === 'album') {
+    const typeHint = 'album';
     return (
       <TrackView 
         artist={urlSegments[1]} 

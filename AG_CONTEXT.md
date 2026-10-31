@@ -187,6 +187,14 @@ resolved `{ targetUrl, artistName, title, videoId }`. This is what makes
 Odesli/oEmbed lookup every time. Separate concern from `resolved_entities` —
 this is purely slug ↔ display-metadata, not platform matching state.
 
+## Song links
+
+Songs are always `/artist/album/track` (rule and slug format in `AGENTS.md` and
+`app/lib/slugify.ts`). Those pages are forced to `typeHint: 'track'`: iTunes
+`entity=song` and Spotify `search-track` only, in a separate entity whose
+`resolved_entities.source_url` is `track:<artist>/<album>/<track>`. Apple song
+URLs must keep `?i=<id>`; use `isAlbumUrl()`, never a bare `/album/` check.
+
 ## Key files map
 
 - `app/[...url]/page.tsx` — catch-all router: external link vs. known slug.
