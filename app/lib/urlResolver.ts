@@ -715,8 +715,15 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
     };
   }
 
+  // Older auto matches for a song could be a same-titled song by another artist.
+  let staleSongMatch = false;
+  if (ctx.typeHint === 'track' && cached.apple_music?.matched_by === 'auto') {
+    const row = await sql`SELECT artist FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' AND candidate_url = ${cached.apple_music.url} LIMIT 1`;
+    staleSongMatch = !isByArtist({ artistName: row[0]?.artist }, slugify(cleanArtist));
+  }
+
   // Cache hit — reuse the previously auto/manually matched link for this entity.
-  if (cached.apple_music) {
+  if (cached.apple_music && !staleSongMatch) {
     const candidates = await sql`SELECT * FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' ORDER BY confidence DESC NULLS LAST, rank ASC`;
     const active = candidates.find((c: any) => c.candidate_url === cached.apple_music?.url) || candidates[0];
     const isAlbum = isAlbumUrl(active?.candidate_url);
