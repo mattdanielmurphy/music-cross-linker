@@ -46,3 +46,24 @@ export function cleanAppleUrl(url: string) {
   const trackId = new URLSearchParams(query || '').get('i');
   return trackId ? `${base}?i=${trackId}` : base;
 }
+
+const FEATURE_TAIL = /\s*[(\[]?\b(?:feat\.?|ft\.?|featuring)\s.*$/i;
+const VERSION_TAIL = /\s+[-–—]\s+(?:(?:\d{4}\s+)?(?:digital(?:ly)?\s+)?remaster(?:ed)?(?:\s+\d{4})?(?:\s+version)?|radio edit|single version|album version|mono|stereo)\s*$/i;
+const BARE_REMASTER_TAIL = /\s+(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?$/i;
+
+/** Reduces a song title to the name stores list: no featured artists or remaster/edit tails. */
+export function coreTitle(title: string) {
+  return title.replace(FEATURE_TAIL, '').replace(VERSION_TAIL, '').replace(BARE_REMASTER_TAIL, '').trim() || title;
+}
+
+/** Same as coreTitle, but on a slug such as loving-is-easy-feat-benny-sings. */
+export function coreTitleSlug(slug: string) {
+  return slugify(coreTitle(slug.replace(/-/g, ' ')));
+}
+
+const VERSION_WORDS = /\b(live|remix|mix|acoustic|demo|instrumental|karaoke|edit|rehearsal|session|commentary|version)\b/i;
+
+/** True for alternate takes, so the plain studio song wins when the request names no version. */
+export function isAlternateVersion(title: string) {
+  return VERSION_WORDS.test(title);
+}

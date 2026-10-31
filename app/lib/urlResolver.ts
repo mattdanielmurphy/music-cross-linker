@@ -2,7 +2,7 @@ import sql from './db';
 import * as cheerio from 'cheerio';
 import { cleanYouTubeTitle, parseYouTubeTitle, parseSpotifyTitle } from './youtube/titleParser';
 import { getTopVideos } from './youtube';
-import { cleanAppleUrl, isAlbumUrl, slugify, NO_ALBUM_SLUG } from './slugify';
+import { cleanAppleUrl, coreTitle, coreTitleSlug, isAlternateVersion, isAlbumUrl, slugify, NO_ALBUM_SLUG } from './slugify';
 
 // ---------------------------------------------------------------------------
 // Shared match confidence classification.
@@ -24,9 +24,12 @@ export type Platform = 'apple_music' | 'spotify' | 'youtube';
 
 function normalizeForMatch(s: string | null | undefined): string {
   if (!s) return '';
-  return s
+  return coreTitle(s)
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/['’]/g, '')
+    .replace(/&/g, ' and ')
     .replace(/[\(\[\{].*?[\)\]\}]/g, ' ') // strip parenthetical/bracketed content
     .replace(/(?<=\d)\s*[\-–—]\s*(?=\d)/g, '-') // preserve hyphenated number ranges e.g. 85-92
     .replace(/[^a-z0-9]+/g, ' ')
@@ -389,6 +392,24 @@ async function searchSpotifyViaSpotapi(
   return validPrimary || validFallback || null;
 }
 
+/**
+ * Song ranking: named album first, then the plain song over live/remix takes,
+ * then the length most versions share (which sinks extended or edited cuts).
+ */
+function rankSongs(results: any[], albumSlug: string | null | undefined, wantsVersion = false) {
+  const lengths = results.map((r) => r.trackTimeMillis || 0).filter(Boolean).sort((a, b) => a - b);
+  const typical = lengths[Math.floor(lengths.length / 2)] || 0;
+  const key = (r: any) => [
+    albumRank(r.collectionName, albumSlug),
+    !wantsVersion && isAlternateVersion(r.trackName || '') ? 1 : 0,
+    Math.abs((r.trackTimeMillis || typical) - typical),
+  ];
+  return [...results].sort((a, b) => {
+    const [x, y] = [key(a), key(b)];
+    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+  });
+}
+
 export interface SongMatch {
   artist: string;
   album: string | null;
@@ -409,19 +430,21 @@ function albumRank(collectionName: string | null | undefined, albumSlug: string 
  * wrong album segment still lands on the song. Null when no song has that title.
  */
 export async function lookupSong(artistSlug: string, albumSlug: string | null, trackSlug: string, country = 'CA'): Promise<SongMatch | null> {
-  const term = `${artistSlug} ${trackSlug}`.replace(/-/g, ' ');
+  const wanted = coreTitleSlug(trackSlug);
+  const term = `${artistSlug} ${wanted}`.replace(/-/g, ' ');
   const data = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&country=${country.toLowerCase()}&limit=50`)
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null);
 
-  const songs = (data?.results || [])
-    .filter((r: any) => r.kind === 'song' && slugify(r.trackName || '') === trackSlug && `-${slugify(r.artistName || '')}-`.includes(`-${artistSlug}-`))
-    .map((r: any) => ({ r, rank: albumRank(r.collectionName, albumSlug) }))
-    .sort((a: any, b: any) => a.rank - b.rank);
+  const songs = (data?.results || []).filter((r: any) =>
+    r.kind === 'song' &&
+    slugify(coreTitle((r.trackName || '').replace(/\s*[(\[].*$/, ''))) === wanted &&
+    `-${slugify(r.artistName || '')}-`.includes(`-${artistSlug}-`)
+  );
 
-  const best = songs[0]?.r;
+  const best = rankSongs(songs, albumSlug, isAlternateVersion(trackSlug))[0];
   if (!best) return null;
-  return { artist: best.artistName, album: best.collectionName || null, title: best.trackName };
+  return { artist: best.artistName, album: best.collectionName || null, title: coreTitle(best.trackName) };
 }
 
 export interface CachedMatch {
@@ -472,7 +495,7 @@ export async function resolveEntity(
   const cleanTitleRaw = (title || '').trim();
 
   let cleanArtist = cleanArtistRaw;
-  let cleanTitle = cleanTitleRaw;
+  let cleanTitle = coreTitle(cleanTitleRaw);
 
   let sourcePlatform: EntityContext['sourcePlatform'] = 'unknown';
   if (sourceUrl?.includes('apple.com')) sourcePlatform = 'apple_music';
@@ -698,12 +721,8 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
     .then(r => r.json()).catch(() => null);
 
   if (songOnly && itunesSearch?.results) {
-    itunesSearch.results = itunesSearch.results
-      .filter((r: any) => r.kind === 'song' && r.trackViewUrl)
-      .map((r: any) => ({ r, rank: albumRank(r.collectionName, ctx.albumSlug) }))
-      .sort((a: any, b: any) => a.rank - b.rank)
-      .slice(0, 5)
-      .map(({ r }: any) => r);
+    const songs = itunesSearch.results.filter((r: any) => r.kind === 'song' && r.trackViewUrl);
+    itunesSearch.results = rankSongs(songs, ctx.albumSlug, isAlternateVersion(cleanTitle)).slice(0, 5);
   }
 
   let bestConfidence: Confidence = 'none';

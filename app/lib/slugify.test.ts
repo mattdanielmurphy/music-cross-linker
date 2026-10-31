@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildTrackPath, cleanAppleUrl, isAlbumUrl, normalizeSegment, slugify } from './slugify';
+import { buildTrackPath, coreTitle, coreTitleSlug, cleanAppleUrl, isAlbumUrl, normalizeSegment, slugify } from './slugify';
 
 describe('slugify', () => {
   test.each([
@@ -32,4 +32,14 @@ test('Apple song links are not albums and keep their track id', () => {
   expect(cleanAppleUrl(song)).toBe('https://music.apple.com/ca/album/karma-police/1097861387?i=1097861824');
   expect(isAlbumUrl(cleanAppleUrl(song))).toBe(false);
   expect(isAlbumUrl('https://music.apple.com/ca/album/ok-computer/1097861387?uo=4')).toBe(true);
+});
+
+test('coreTitle removes features and remaster tails but keeps real titles', () => {
+  expect(coreTitle('Loving Is Easy Feat Benny Sings')).toBe('Loving Is Easy');
+  expect(coreTitle('Loving Is Easy (feat. Benny Sings)')).toBe('Loving Is Easy');
+  expect(coreTitle('Here Comes the Sun - Remastered 2009')).toBe('Here Comes the Sun');
+  expect(coreTitle('Featuring Nobody')).toBe('Featuring Nobody');
+  expect(coreTitle('Lift Off')).toBe('Lift Off');
+  expect(coreTitleSlug('we-will-rock-you-remastered-2011')).toBe('we-will-rock-you');
+  expect(coreTitleSlug('get-lucky-feat-pharrell-williams')).toBe('get-lucky');
 });
