@@ -410,6 +410,33 @@ function rankSongs(results: any[], albumSlug: string | null | undefined, wantsVe
   });
 }
 
+/** iTunes throttles by IP (403s after about 20 calls a minute), so each search is cached for a day. */
+async function searchItunesSongs(term: string, country: string) {
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&country=${country.toLowerCase()}&limit=50`;
+  const data = await fetch(url, { next: { revalidate: 86400 } }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  return (data?.results || []).filter((r: any) => r.kind === 'song' && r.trackViewUrl);
+}
+
+function isByArtist(r: any, artistSlug: string) {
+  return `-${slugify(r.artistName || '')}-`.includes(`-${artistSlug}-`);
+}
+
+function hasTitle(r: any, titleSlug: string) {
+  return slugify(coreTitle((r.trackName || '').replace(/\s*[(\[].*$/, ''))) === titleSlug;
+}
+
+/**
+ * The artist's own versions of a song. iTunes sometimes buries a song under
+ * title-alikes by others, so a second search walks the named album's tracks.
+ */
+async function findArtistSongs(artistSlug: string, albumSlug: string | null | undefined, titleSlug: string, country: string) {
+  const words = (s: string) => s.replace(/-/g, ' ');
+  const matches = (rows: any[]) => rows.filter((r) => isByArtist(r, artistSlug) && hasTitle(r, titleSlug));
+  const found = matches(await searchItunesSongs(`${words(artistSlug)} ${words(titleSlug)}`, country));
+  if (found.length || !albumSlug || albumSlug === NO_ALBUM_SLUG) return found;
+  return matches(await searchItunesSongs(`${words(artistSlug)} ${words(albumSlug)}`, country));
+}
+
 export interface SongMatch {
   artist: string;
   album: string | null;
@@ -430,17 +457,7 @@ function albumRank(collectionName: string | null | undefined, albumSlug: string 
  * wrong album segment still lands on the song. Null when no song has that title.
  */
 export async function lookupSong(artistSlug: string, albumSlug: string | null, trackSlug: string, country = 'CA'): Promise<SongMatch | null> {
-  const wanted = coreTitleSlug(trackSlug);
-  const term = `${artistSlug} ${wanted}`.replace(/-/g, ' ');
-  const data = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&country=${country.toLowerCase()}&limit=50`)
-    .then((r) => (r.ok ? r.json() : null))
-    .catch(() => null);
-
-  const songs = (data?.results || []).filter((r: any) =>
-    r.kind === 'song' &&
-    slugify(coreTitle((r.trackName || '').replace(/\s*[(\[].*$/, ''))) === wanted &&
-    `-${slugify(r.artistName || '')}-`.includes(`-${artistSlug}-`)
-  );
+  const songs = await findArtistSongs(artistSlug, albumSlug, coreTitleSlug(trackSlug), country);
 
   const best = rankSongs(songs, albumSlug, isAlternateVersion(trackSlug))[0];
   if (!best) return null;
@@ -717,13 +734,11 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
 
   let appleUrl = `https://music.apple.com/${country.toLowerCase()}/search?term=${encodeURIComponent(searchTerm)}`;
   const songOnly = ctx.typeHint === 'track';
-  const itunesSearch = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&media=music&entity=${songOnly ? 'song' : 'song,album'}&country=${country.toLowerCase()}&limit=${songOnly ? 25 : 5}`)
-    .then(r => r.json()).catch(() => null);
-
-  if (songOnly && itunesSearch?.results) {
-    const songs = itunesSearch.results.filter((r: any) => r.kind === 'song' && r.trackViewUrl);
-    itunesSearch.results = rankSongs(songs, ctx.albumSlug, isAlternateVersion(cleanTitle)).slice(0, 5);
-  }
+  // Songs only accept the artist's own recordings: a same-titled song by someone else is a wrong link.
+  const itunesSearch = songOnly
+    ? { results: rankSongs(await findArtistSongs(slugify(cleanArtist), ctx.albumSlug, coreTitleSlug(slugify(cleanTitle)), country), ctx.albumSlug, isAlternateVersion(cleanTitle)).slice(0, 5) }
+    : await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&media=music&entity=song,album&country=${country.toLowerCase()}&limit=5`)
+      .then(r => r.json()).catch(() => null);
 
   let bestConfidence: Confidence = 'none';
   let bestCandidateId: string | null = null;
