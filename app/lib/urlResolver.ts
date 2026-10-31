@@ -715,11 +715,11 @@ export async function resolveApplePlatform(ctx: EntityContext, sourceUrl?: strin
     };
   }
 
-  // Older auto matches for a song could be a same-titled song by another artist.
+  // Older auto matches for a song could be another artist's song, or another song by this artist.
   let staleSongMatch = false;
   if (ctx.typeHint === 'track' && cached.apple_music?.matched_by === 'auto') {
-    const row = await sql`SELECT artist FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' AND candidate_url = ${cached.apple_music.url} LIMIT 1`;
-    staleSongMatch = !isByArtist({ artistName: row[0]?.artist }, slugify(cleanArtist));
+    const row = await sql`SELECT artist, title FROM match_candidates WHERE entity_id = ${entityId} AND platform = 'apple_music' AND candidate_url = ${cached.apple_music.url} LIMIT 1`;
+    staleSongMatch = !isByArtist({ artistName: row[0]?.artist }, slugify(cleanArtist)) || !hasTitle({ trackName: row[0]?.title }, coreTitleSlug(slugify(cleanTitle)));
   }
 
   // Cache hit — reuse the previously auto/manually matched link for this entity.
