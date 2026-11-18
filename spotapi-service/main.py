@@ -397,3 +397,8 @@ def search_spotify_candidates(q: str, limit: int = 10):
 @app.get("/api/spotify/health")
 def health_spotify():
     return {"status": "ok"}
+
+
+# Album art finder for Muzak (art.py): GET /api/art/find
+from art import router as art_router  # noqa: E402
+app.include_router(art_router)
