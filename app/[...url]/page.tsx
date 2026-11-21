@@ -82,43 +82,7 @@ export async function generateMetadata({
     const { imageUrl, imageWidth, imageHeight, videoId: resolvedVideoId } =
       await resolveBestMediaMetadata(artist, track, videoId || record?.videoId, canonicalUrl);
 
-    return {
-      title: { absolute: pageTitle },
-      description: pageDescription,
-      openGraph: {
-        title: pageTitle,
-        description: pageDescription,
-        siteName: 'Multilink',
-        type: 'music.song',
-        images: imageUrl
-          ? [
-              {
-                url: imageUrl,
-                width: imageWidth,
-                height: imageHeight,
-                alt: pageTitle,
-              },
-            ]
-          : undefined,
-        videos: resolvedVideoId
-          ? [
-              {
-                url: `https://www.youtube.com/embed/${resolvedVideoId}`,
-                secureUrl: `https://www.youtube.com/embed/${resolvedVideoId}`,
-                type: 'text/html',
-                width: 1280,
-                height: 720,
-              },
-            ]
-          : undefined,
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title: pageTitle,
-        description: pageDescription,
-        images: imageUrl ? [imageUrl] : undefined,
-      },
-    };
+    return buildMeta(pageTitle, pageDescription, imageUrl, imageWidth, imageHeight, resolvedVideoId);
   }
 
   const songPath = await resolveSongPath(urlSegments);
@@ -159,43 +123,7 @@ export async function generateMetadata({
   const { imageUrl, imageWidth, imageHeight, videoId: resolvedVideoId } =
     await resolveBestMediaMetadata(artist, track, fallbackVideoId, record?.targetUrl);
 
-  return {
-    title: { absolute: pageTitle },
-    description: pageDescription,
-    openGraph: {
-      title: pageTitle,
-      description: pageDescription,
-      siteName: 'Multilink',
-      type: 'music.song',
-      images: imageUrl
-        ? [
-            {
-              url: imageUrl,
-              width: imageWidth,
-              height: imageHeight,
-              alt: pageTitle,
-            },
-          ]
-        : undefined,
-      videos: resolvedVideoId
-        ? [
-            {
-              url: `https://www.youtube.com/embed/${resolvedVideoId}`,
-              secureUrl: `https://www.youtube.com/embed/${resolvedVideoId}`,
-              type: 'text/html',
-              width: 1280,
-              height: 720,
-            },
-          ]
-        : undefined,
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: pageTitle,
-      description: pageDescription,
-      images: imageUrl ? [imageUrl] : undefined,
-    },
-  };
+  return buildMeta(pageTitle, pageDescription, imageUrl, imageWidth, imageHeight, resolvedVideoId);
 }
 
 export default async function Page({ 
@@ -304,4 +232,47 @@ export default async function Page({
   }
 
   redirect('/');
+}
+
+// iMessage plays a link inline only when the page looks like a video page:
+// og:type video.other + og:video embed + a Twitter "player" card, same as YouTube's own tags.
+function buildMeta(
+  pageTitle: string,
+  pageDescription: string,
+  imageUrl: string | null,
+  imageWidth: number,
+  imageHeight: number,
+  videoId: string | null
+): Metadata {
+  const embed = videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+  return {
+    title: { absolute: pageTitle },
+    description: pageDescription,
+    openGraph: {
+      title: pageTitle,
+      description: pageDescription,
+      siteName: 'Multilink',
+      type: embed ? 'video.other' : 'music.song',
+      images: imageUrl
+        ? [{ url: imageUrl, width: imageWidth, height: imageHeight, alt: pageTitle }]
+        : undefined,
+      videos: embed
+        ? [{ url: embed, secureUrl: embed, type: 'text/html', width: 1280, height: 720 }]
+        : undefined,
+    },
+    twitter: embed
+      ? {
+          card: 'player',
+          title: pageTitle,
+          description: pageDescription,
+          images: imageUrl ? [imageUrl] : undefined,
+          players: [{ playerUrl: embed, streamUrl: embed, width: 1280, height: 720 }],
+        }
+      : {
+          card: 'summary_large_image',
+          title: pageTitle,
+          description: pageDescription,
+          images: imageUrl ? [imageUrl] : undefined,
+        },
+  };
 }
