@@ -266,7 +266,7 @@ function buildMeta(
           title: pageTitle,
           description: pageDescription,
           images: imageUrl ? [imageUrl] : undefined,
-          players: [{ playerUrl: embed, streamUrl: embed, width: 1280, height: 720 }],
+          players: [{ playerUrl: embed, width: 1280, height: 720 }],
         }
       : {
           card: 'summary_large_image',
